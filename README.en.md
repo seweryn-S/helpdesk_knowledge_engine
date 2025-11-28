@@ -113,7 +113,52 @@ ExecStop=/usr/bin/docker stop hd_ke
 WantedBy=multi-user.target
 ```
 
+## Nightly sync
+- `scripts/nightly_sync.py` simply calls `POST /api/v1/sync`, so every API filter stays available (`--time-modified-after`, `--status`, `--category`, `--tag`, `--ticket-id`, `--update-type`, `--new-ticket-status`, `--dry-run`, `--page-limit`).
+- Logs go to STDOUT and, by default, to `/var/log/hd_ke/nightly_sync.log` with rotation (10 MB × 5). Override via `--log-file` or `HD_KE_SYNC_LOG_FILE`. Use `--log-level` / `HD_KE_SYNC_LOG_LEVEL` to change verbosity.
+- Run `scripts/setup_nightly_sync_env.sh` to create an isolated `scripts/.venv_nightly` environment with dependencies from `scripts/requirements.txt`; override `PYTHON_BIN` / `VENV_PATH` to point to a different interpreter or destination path.
+- The default `--api-base-url` value comes from `HD_KE_API_BASE_URL` (fallback `http://127.0.0.1:8000`), but you can always override it via CLI.
+- Non-zero exit codes indicate HTTP/JSON failures so cron/systemd can alert you. Log lines summarize the filter set plus the returned counters (`tickets_fetched`, `updates_fetched`, etc.).
+
+Example run:
+```
+python scripts/nightly_sync.py \
+  --api-base-url http://127.0.0.1:8000 \
+  --log-file /var/log/hd_ke/nightly_sync.log \
+  --status Open --status Pending \
+  --tag "LLM-ready"
+```
+
+Example systemd service + timer executing at 02:30 every day:
+```
+# /etc/systemd/system/hd_ke-nightly-sync.service
+[Unit]
+Description=hd_ke nightly sync
+After=network.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/srv/hd_ke
+ExecStart=/usr/bin/python3 scripts/nightly_sync.py --api-base-url http://127.0.0.1:8000
+User=hd_ke
+Group=hd_ke
+
+# /etc/systemd/system/hd_ke-nightly-sync.timer
+[Unit]
+Description=Run hd_ke nightly sync at 02:30
+
+[Timer]
+OnCalendar=*-*-* 02:30:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+```
+After creating the units run `systemctl daemon-reload && systemctl enable --now hd_ke-nightly-sync.timer`.
+
 ## Changelog
+- 0.7.0 – added `scripts/setup_nightly_sync_env.sh` + `scripts/requirements.txt` for a dedicated virtualenv tailored to `nightly_sync.py`.
+- 0.6.0 – added `scripts/nightly_sync.py` helper with logging and documentation for timer/systemd setups.
 - 0.5.0 – new `/query/threads` endpoint: returns full threads (ticket + updates) reconstructed from chunks with `user_role` prefixes in text and ticket metadata (status, tags, URL, time_created, time_modified from the latest entry).
 - 0.4.6 – fixed parsing of `THREAD_FILTER_PATTERNS`: env source no longer forces JSON decoding, validator accepts empty, CSV, or JSON strings.
 - 0.4.5 – devcontainer: `~/.codex` mount derived from the repo path (`${localWorkspaceFolder}/../.codex`) so it reliably appears in the container.

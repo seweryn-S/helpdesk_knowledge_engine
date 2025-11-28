@@ -6,7 +6,7 @@ Requires=docker.service
 [Service]
 EnvironmentFile=/etc/default/hd_ke
 Restart=always
-ExecStartPre=/usr/bin/docker pull hd_ke:latest
+#ExecStartPre=/usr/bin/docker pull hd_ke:latest
 ExecStart=/usr/bin/docker run --rm \
   --name hd_ke \
   --env-file /etc/default/hd_ke \

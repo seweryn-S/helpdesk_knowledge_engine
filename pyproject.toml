@@ -1,6 +1,6 @@
 [project]
 name = "hd-ke"
-version = "0.5.0"
+version = "0.7.0"
 description = "Help Desk knowledge engine (RAG) for Help Desk tickets and updates."
 requires-python = ">=3.11"
 dependencies = [

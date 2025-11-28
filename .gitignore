@@ -1,6 +1,7 @@
 # Virtual environments
 .venv/
 venv/
+scripts/.venv_nightly/
 
 # Python cache / compiled files
 __pycache__/
@@ -29,4 +30,3 @@ dist/
 # OS files
 .DS_Store
 Thumbs.db
-

@@ -114,7 +114,52 @@ ExecStop=/usr/bin/docker stop hd_ke
 WantedBy=multi-user.target
 ```
 
+## Synchronizacja nocna
+- Skrypt `scripts/nightly_sync.py` wywołuje `POST /api/v1/sync`, dzięki czemu w całości korzysta z istniejących filtrów (`--time-modified-after`, `--status`, `--category`, `--tag`, `--ticket-id`, `--update-type`, `--new-ticket-status`, `--dry-run`, `--page-limit`).
+- Logi trafiają na STDOUT oraz domyślnie do `/var/log/hd_ke/nightly_sync.log` (rotacja 10 MB × 5). Ścieżkę można zmienić parametrem `--log-file` lub zmienną `HD_KE_SYNC_LOG_FILE`. Poziom logowania kontroluje `--log-level` / `HD_KE_SYNC_LOG_LEVEL`.
+- Dedykowane środowisko wirtualne dla skryptu tworzysz poleceniem `scripts/setup_nightly_sync_env.sh` (powstaje `scripts/.venv_nightly` z zależnościami z `scripts/requirements.txt`); zmienne `PYTHON_BIN` / `VENV_PATH` pozwalają wskazać inny interpreter lub docelową ścieżkę.
+- Domyślna wartość `--api-base-url` pochodzi ze zmiennej `HD_KE_API_BASE_URL` (fallback to `http://127.0.0.1:8000`), ale zawsze możesz jawnie wskazać adres w CLI.
+- Skrypt kończy się kodem ≠0 w razie błędów HTTP/JSON, dzięki czemu cron/systemd wykryją niepowodzenie. Komunikaty zawierają parametry filtra oraz rezultat (`tickets_fetched`, `updates_fetched`, itp.).
+
+Przykład lokalnego uruchomienia:
+```
+python scripts/nightly_sync.py \
+  --api-base-url http://127.0.0.1:8000 \
+  --log-file /var/log/hd_ke/nightly_sync.log \
+  --status Open --status Pending \
+  --tag "LLM-ready"
+```
+
+Przykładowy zestaw systemd service + timer odpalany codziennie o 02:30:
+```
+# /etc/systemd/system/hd_ke-nightly-sync.service
+[Unit]
+Description=hd_ke nightly sync
+After=network.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/srv/hd_ke
+ExecStart=/usr/bin/python3 scripts/nightly_sync.py --api-base-url http://127.0.0.1:8000
+User=hd_ke
+Group=hd_ke
+
+# /etc/systemd/system/hd_ke-nightly-sync.timer
+[Unit]
+Description=Run hd_ke nightly sync at 02:30
+
+[Timer]
+OnCalendar=*-*-* 02:30:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+```
+Po utworzeniu jednostek wykonaj `systemctl daemon-reload && systemctl enable --now hd_ke-nightly-sync.timer`.
+
 ## Changelog
+- 0.7.0 – `scripts/setup_nightly_sync_env.sh` + `scripts/requirements.txt` do szybkiego zbudowania odseparowanego virtualenv dla `nightly_sync.py`.
+- 0.6.0 – skrypt `scripts/nightly_sync.py` do nocnej synchronizacji z logowaniem, dokumentacja konfiguracji timerów/systemd.
 - 0.5.0 – nowy endpoint `/query/threads`: zwraca pełne wątki (ticket + aktualizacje) sklejone z chunków z prefiksami `user_role` w treści i metadanymi z ticketu (status, tagi, URL, time_created, time_modified z ostatniego wpisu).
 - 0.4.6 – poprawka parsowania `THREAD_FILTER_PATTERNS`: źródło env nie wymusza JSON, walidator obsługuje puste, CSV i JSON.
 - 0.4.5 – devcontainer: mount `~/.codex` liczony względem folderu repo (`${localWorkspaceFolder}/../.codex`), aby był zawsze widoczny w kontenerze.
