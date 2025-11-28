@@ -1,0 +1,19 @@
+[Unit]
+Description=hd_ke RAG service
+After=network.target docker.service
+Requires=docker.service
+
+[Service]
+EnvironmentFile=/etc/default/hd_ke
+Restart=always
+ExecStartPre=/usr/bin/docker pull hd_ke:latest
+ExecStart=/usr/bin/docker run --rm \
+  --name hd_ke \
+  --env-file /etc/default/hd_ke \
+  -p 7005:8000 \
+  -v ${HD_KE_DATA_DIR}:/var/lib/hd_ke \
+  hd_ke:latest
+ExecStop=/usr/bin/docker stop hd_ke
+
+[Install]
+WantedBy=multi-user.target

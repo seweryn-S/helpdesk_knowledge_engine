@@ -1,0 +1,1083 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Help Desk API documentation",
+    "version": "1.2.0",
+    "description": "Web service provided by the Help Desk module. Provides tickets as well as comments and replies (updates).<br><br>[Download OpenApi specification (.json)](./export.php)"
+  },
+  "components": {
+    "securitySchemes": {
+      "ApiKeyAuth": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "Authorization"
+      }
+    }
+  },
+  "servers": [
+    {
+      "url": "https://edu.p.lodz.pl/webservice/restful/server.php"
+    }
+  ],
+  "paths": {
+    "/block_helpdesk_tickets": {
+      "post": {
+        "tags": [
+          "Tickets and updates"
+        ],
+        "summary": "Find tickets that meet specific filters",
+        "description": "Retrieves tickets that meet specific filters: time created, time modified, status, category, tag.",
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "params": {
+                    "type": "object",
+                    "properties": {
+                      "time_created_after": {
+                        "type": "string",
+                        "format": "date-time"
+                      },
+                      "time_created_before": {
+                        "type": "string",
+                        "format": "date-time"
+                      },
+                      "time_modified_after": {
+                        "type": "string",
+                        "format": "date-time"
+                      },
+                      "time_modified_before": {
+                        "type": "string",
+                        "format": "date-time"
+                      },
+                      "status": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "category": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "tag": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  },
+                  "pagination": {
+                    "type": "object",
+                    "properties": {
+                      "page": {
+                        "type": "integer"
+                      },
+                      "limit": {
+                        "type": "integer"
+                      }
+                    }
+                  }
+                },
+                "required": [
+                  "params",
+                  "pagination"
+                ],
+                "example": {
+                  "params": {
+                    "time_created_after": "2025-01-01T09:00:00+00:00",
+                    "time_created_before": "2025-11-30T10:00:00+00:00",
+                    "time_modified_after": "2025-01-01T09:00:00+00:00",
+                    "time_modified_before": "2025-11-30T10:00:00+00:00",
+                    "status": [
+                      "new",
+                      "workinprogress",
+                      "closed",
+                      "reopened"
+                    ],
+                    "category": [
+                      "wikamp",
+                      "network",
+                      "skryba",
+                      "usos"
+                    ],
+                    "tag": [
+                      "raporty",
+                      "dziennik ocen",
+                      "testowe"
+                    ]
+                  },
+                  "pagination": {
+                    "page": 1,
+                    "limit": 10
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "integer"
+                          },
+                          "url_suffix": {
+                            "type": "string"
+                          },
+                          "topic": {
+                            "type": "string"
+                          },
+                          "details": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string"
+                          },
+                          "category": {
+                            "type": "string"
+                          },
+                          "time_created": {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          "time_modified": {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          "tags": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "related_tickets": {
+                            "type": "array",
+                            "items": {
+                              "type": "integer"
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "pagination": {
+                      "type": "object",
+                      "properties": {
+                        "total_records": {
+                          "type": "integer"
+                        },
+                        "current_page": {
+                          "type": "integer"
+                        },
+                        "total_pages": {
+                          "type": "integer"
+                        },
+                        "next_page": {
+                          "type": [
+                            "integer",
+                            "null"
+                          ]
+                        },
+                        "prev_page": {
+                          "type": [
+                            "integer",
+                            "null"
+                          ]
+                        }
+                      }
+                    }
+                  },
+                  "example": {
+                    "data": [
+                      {
+                        "id": 23672,
+                        "url_suffix": "id=24713",
+                        "topic": "System X nie odpowiada",
+                        "details": "Dzień dobry, w momencie gdy loguje się do systemu i przechodzę do zakładki raport dostaję błąd.",
+                        "status": "workinprogress",
+                        "category": "software",
+                        "time_created": "2025-10-19T08:45:35+00:00",
+                        "time_modified": "2025-10-19T09:12:00+00:00",
+                        "tags": [
+                          "raporty",
+                          "oceny cząstkowe"
+                        ],
+                        "related_tickets": [
+                          17123,
+                          19876
+                        ]
+                      }
+                    ],
+                    "pagination": {
+                      "total_records": 120,
+                      "current_page": 1,
+                      "total_pages": 12,
+                      "next_page": 2,
+                      "prev_page": null
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "exception": {
+                      "type": "string"
+                    },
+                    "errorcode": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "example": {
+                    "exception": "core\\exception\\moodle_exception",
+                    "errorcode": "invalidtoken",
+                    "message": "Invalid token - token not found"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "exception": {
+                      "type": "string"
+                    },
+                    "errorcode": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "example": {
+                    "exception": "core\\exception\\moodle_exception",
+                    "errorcode": "noauthheader",
+                    "message": "No Authorization header found in request sent to Moodle"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/block_helpdesk_updates": {
+      "post": {
+        "tags": [
+          "Tickets and updates"
+        ],
+        "summary": "Find ticket updates that meet specific filters",
+        "description": "Retrieves updates (comments, status changes, details changes) for tickets based on filters: time created, time modified, update type and new ticket status.",
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "params": {
+                    "type": "object",
+                    "properties": {
+                      "time_created_after": {
+                        "type": "string",
+                        "format": "date-time"
+                      },
+                      "time_created_before": {
+                        "type": "string",
+                        "format": "date-time"
+                      },
+                      "time_modified_after": {
+                        "type": "string",
+                        "format": "date-time"
+                      },
+                      "time_modified_before": {
+                        "type": "string",
+                        "format": "date-time"
+                      },
+                      "type": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "new_ticket_status": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "ticket_id": {
+                        "type": "array",
+                        "items": {
+                          "type": "integer"
+                        }
+                      }
+                    }
+                  },
+                  "pagination": {
+                    "type": "object",
+                    "properties": {
+                      "page": {
+                        "type": "integer"
+                      },
+                      "limit": {
+                        "type": "integer"
+                      }
+                    }
+                  }
+                },
+                "required": [
+                  "params",
+                  "pagination"
+                ],
+                "example": {
+                  "params": {
+                    "time_created_after": "2025-01-01T09:00:00+00:00",
+                    "time_created_before": "2025-11-30T10:00:00+00:00",
+                    "time_modified_after": "2025-01-01T09:00:00+00:00",
+                    "time_modified_before": "2025-11-30T10:00:00+00:00",
+                    "type": [
+                      "statuschanged",
+                      "comment",
+                      "detailschanged"
+                    ],
+                    "new_ticket_status": [
+                      "workinprogress",
+                      "needmoreinfo",
+                      "closed"
+                    ],
+                    "ticket_id": [
+                      25000,
+                      25001,
+                      25002
+                    ]
+                  },
+                  "pagination": {
+                    "page": 1,
+                    "limit": 10
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "integer"
+                          },
+                          "ticket_id": {
+                            "type": "integer"
+                          },
+                          "url_suffix": {
+                            "type": "string"
+                          },
+                          "type": {
+                            "type": "string"
+                          },
+                          "new_ticket_status": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "details": {
+                            "type": "string"
+                          },
+                          "user_role": {
+                            "type": "string"
+                          },
+                          "time_created": {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          "time_modified": {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          "hidden": {
+                            "type": "boolean"
+                          }
+                        }
+                      }
+                    },
+                    "pagination": {
+                      "type": "object",
+                      "properties": {
+                        "total_records": {
+                          "type": "integer"
+                        },
+                        "current_page": {
+                          "type": "integer"
+                        },
+                        "total_pages": {
+                          "type": "integer"
+                        },
+                        "next_page": {
+                          "type": [
+                            "integer",
+                            "null"
+                          ]
+                        },
+                        "prev_page": {
+                          "type": [
+                            "integer",
+                            "null"
+                          ]
+                        }
+                      }
+                    }
+                  },
+                  "example": {
+                    "data": [
+                      {
+                        "id": 302456,
+                        "ticket_id": 23672,
+                        "url_suffix": "id=23672&updateid=302456",
+                        "type": "statuschanged",
+                        "new_ticket_status": "needmoreinfo",
+                        "details": "Dziękujemy za zgłoszenie. Proszę sprawdzić identyfikator sesji w narzędziach deweloperskich w przeglądarce. Pozdrawiam...",
+                        "user_role": "answerer",
+                        "time_created": "2025-10-19T09:10:00+00:00",
+                        "time_modified": "2025-10-19T09:10:00+00:00",
+                        "hidden": false
+                      },
+                      {
+                        "id": 302467,
+                        "ticket_id": 23672,
+                        "url_suffix": "id=23672&updateid=302467",
+                        "type": "comment",
+                        "new_ticket_status": null,
+                        "details": "Podaję identyfikator sesji: X33452. Dziękuję za pomoc.",
+                        "user_role": "submitter",
+                        "time_created": "2025-10-19T09:10:36+00:00",
+                        "time_modified": "2025-10-19T09:10:52+00:00",
+                        "hidden": false
+                      },
+                      {
+                        "id": 302498,
+                        "ticket_id": 23672,
+                        "url_suffix": "id=23672&updateid=302498",
+                        "type": "detailschanged",
+                        "new_ticket_status": null,
+                        "details": "Proszę o wsparcie zespół Oprogramowanie. Poprzednia kategoria: Inne. Nowa kategoria: Oprogramowanie.",
+                        "user_role": "answerer",
+                        "time_created": "2025-10-19T09:11:06+00:00",
+                        "time_modified": "2025-10-19T09:11:06+00:00",
+                        "hidden": false
+                      },
+                      {
+                        "id": 302516,
+                        "ticket_id": 23672,
+                        "url_suffix": "id=23672&updateid=302516",
+                        "type": "statuschanged",
+                        "new_ticket_status": "workinprogress",
+                        "details": "Chłopaki zobaczcie co tam się dzieje. Pozdrawiam, Krzysiek.",
+                        "user_role": "answerer",
+                        "time_created": "2025-10-19T09:12:00+00:00",
+                        "time_modified": "2025-10-19T09:12:00+00:00",
+                        "hidden": true
+                      }
+                    ],
+                    "pagination": {
+                      "total_records": 27,
+                      "current_page": 1,
+                      "total_pages": 3,
+                      "next_page": 2,
+                      "prev_page": null
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "exception": {
+                      "type": "string"
+                    },
+                    "errorcode": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "example": {
+                    "exception": "core\\exception\\moodle_exception",
+                    "errorcode": "invalidtoken",
+                    "message": "Invalid token - token not found"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "exception": {
+                      "type": "string"
+                    },
+                    "errorcode": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "example": {
+                    "exception": "core\\exception\\moodle_exception",
+                    "errorcode": "noauthheader",
+                    "message": "No Authorization header found in request sent to Moodle"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/block_helpdesk_categories": {
+      "get": {
+        "tags": [
+          "Dictionaries"
+        ],
+        "summary": "Get all existing ticket categories",
+        "description": "Retrieves list of all existing ticket categories.",
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "integer"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "order": {
+                        "type": "integer"
+                      }
+                    }
+                  },
+                  "example": [
+                    {
+                      "id": 1,
+                      "name": "wikamp",
+                      "order": 1
+                    },
+                    {
+                      "id": 2,
+                      "name": "network",
+                      "order": 3
+                    },
+                    {
+                      "id": 3,
+                      "name": "software",
+                      "order": 2
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "exception": {
+                      "type": "string"
+                    },
+                    "errorcode": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "example": {
+                    "exception": "core\\exception\\moodle_exception",
+                    "errorcode": "invalidtoken",
+                    "message": "Invalid token - token not found"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "exception": {
+                      "type": "string"
+                    },
+                    "errorcode": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "example": {
+                    "exception": "core\\exception\\moodle_exception",
+                    "errorcode": "noauthheader",
+                    "message": "No Authorization header found in request sent to Moodle"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/block_helpdesk_statuses": {
+      "get": {
+        "tags": [
+          "Dictionaries"
+        ],
+        "summary": "Get all existing ticket statuses",
+        "description": "Retrieves list of all existing ticket statuses.",
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "integer"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "default": {
+                        "type": "boolean"
+                      },
+                      "active": {
+                        "type": "boolean"
+                      }
+                    }
+                  },
+                  "example": [
+                    {
+                      "id": 1,
+                      "name": "new",
+                      "default": true,
+                      "active": true
+                    },
+                    {
+                      "id": 2,
+                      "name": "workinprogress",
+                      "default": false,
+                      "active": true
+                    },
+                    {
+                      "id": 3,
+                      "name": "closed",
+                      "default": false,
+                      "active": false
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "exception": {
+                      "type": "string"
+                    },
+                    "errorcode": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "example": {
+                    "exception": "core\\exception\\moodle_exception",
+                    "errorcode": "invalidtoken",
+                    "message": "Invalid token - token not found"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "exception": {
+                      "type": "string"
+                    },
+                    "errorcode": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "example": {
+                    "exception": "core\\exception\\moodle_exception",
+                    "errorcode": "noauthheader",
+                    "message": "No Authorization header found in request sent to Moodle"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/block_helpdesk_tags": {
+      "get": {
+        "tags": [
+          "Dictionaries"
+        ],
+        "summary": "Get all existing ticket tags",
+        "description": "Retrieves list of all existing ticket tags.",
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "example": [
+                    "raporty",
+                    "dziennik ocen",
+                    "testowe"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "exception": {
+                      "type": "string"
+                    },
+                    "errorcode": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "example": {
+                    "exception": "core\\exception\\moodle_exception",
+                    "errorcode": "invalidtoken",
+                    "message": "Invalid token - token not found"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "exception": {
+                      "type": "string"
+                    },
+                    "errorcode": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "example": {
+                    "exception": "core\\exception\\moodle_exception",
+                    "errorcode": "noauthheader",
+                    "message": "No Authorization header found in request sent to Moodle"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/block_helpdesk_update_types": {
+      "get": {
+        "tags": [
+          "Dictionaries"
+        ],
+        "summary": "Get all existing update types",
+        "description": "Retrieves list of all existing update types",
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "example": [
+                    "detailschanged",
+                    "statuschanged",
+                    "comment"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "exception": {
+                      "type": "string"
+                    },
+                    "errorcode": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "example": {
+                    "exception": "core\\exception\\moodle_exception",
+                    "errorcode": "invalidtoken",
+                    "message": "Invalid token - token not found"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "exception": {
+                      "type": "string"
+                    },
+                    "errorcode": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "example": {
+                    "exception": "core\\exception\\moodle_exception",
+                    "errorcode": "noauthheader",
+                    "message": "No Authorization header found in request sent to Moodle"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/block_helpdesk_user_roles": {
+      "get": {
+        "tags": [
+          "Dictionaries"
+        ],
+        "summary": "Get all existing user roles",
+        "description": "Retrieves list of all existing user roles",
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "example": [
+                    "submitter",
+                    "answerer",
+                    "observer"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "exception": {
+                      "type": "string"
+                    },
+                    "errorcode": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "example": {
+                    "exception": "core\\exception\\moodle_exception",
+                    "errorcode": "invalidtoken",
+                    "message": "Invalid token - token not found"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "exception": {
+                      "type": "string"
+                    },
+                    "errorcode": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "example": {
+                    "exception": "core\\exception\\moodle_exception",
+                    "errorcode": "noauthheader",
+                    "message": "No Authorization header found in request sent to Moodle"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

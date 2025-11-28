@@ -1,0 +1,28 @@
+{
+  "name": "hd_ke-dev",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": ".."
+  },
+  "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
+  "runArgs": [
+    "--env-file",
+    "${localWorkspaceFolder}/deploy/hd_ke.default"
+  ],
+  "mounts": [
+    "source=${localEnv:HOME}/.codex,target=/root/.codex,type=bind,consistency=cached"
+  ],
+  "postCreateCommand": "pip install --no-cache-dir --root-user-action=ignore -e .[dev]",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "openai.chatgpt"
+      ]
+    }
+  },
+  "remoteEnv": {
+    "PYTHONPATH": "/workspaces"
+  }
+}

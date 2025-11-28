@@ -1,0 +1,21 @@
+# Example /etc/default/hd_ke
+QDRANT_HOST=http://172.22.1.233
+QDRANT_PORT=6333
+QDRANT_TICKET_COLLECTION=hd_ticket_chunks
+QDRANT_UPDATE_COLLECTION=hd_update_chunks
+QDRANT_USE_TLS=false
+HELPDESK_API_BASE_URL=https://edu.p.lodz.pl/webservice/restful/server.php
+HELPDESK_API_KEY=CHANGEME
+HELPDESK_TICKET_URL_PREFIX=https://edu.p.lodz.pl/blocks/helpdesk/view.php?
+EMBEDDING_API_BASE_URL=http://172.22.1.5:8000/v1
+EMBEDDING_API_KEY=
+EMBEDDING_MODEL_NAME=sdadas/mmlw-retrieval-roberta-large-v2
+EMBEDDING_CONTEXT_LENGTH=512
+# leave blank to auto-detect via embedding API:
+EMBEDDING_DIM=
+EMBEDDING_PROMPT_PREFIX="query: "
+SYNC_CHECKPOINT_PATH=/var/lib/hd_ke/state.db
+HD_KE_DATA_DIR=/srv/hd_ke
+LOG_LEVEL=INFO
+# Regex patterns (comma/newline separated or JSON) to skip entire tickets/updates
+THREAD_FILTER_PATTERNS=\\.
