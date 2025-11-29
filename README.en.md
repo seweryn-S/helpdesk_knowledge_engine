@@ -43,8 +43,8 @@ THREAD_FILTER_PATTERNS=["^\\s*\\.\\s*$","^\\s*\\r?\\n\\s*$","^\\s*\\.\\s*\\r?\\n
 - `GET /api/v1/health` – healthcheck.
 - `GET /api/v1/info` – version, base config, embedding model.
 - `POST /api/v1/sync` – run synchronization (optional filters, `dry_run`).
-- `POST /api/v1/query` – semantic search with filters and citations.
-- `POST /api/v1/query/threads` – semantic search returning full threads (ticket + updates) with `user_role` prefixes in text and ticket-level metadata (status, tags, URL, creation time, last modification time).
+- `POST /api/v1/query` – semantic search with filters and citations; by default the response hides `chunk_no`, `chunk_total`, `chunk_start`, `chunk_end`, `sentence_start`, `sentence_end`, `details_hash`, and `url_suffix`, and setting `debug=true` in the body returns the full chunk payload.
+- `POST /api/v1/query/threads` – semantic search returning full threads (ticket + updates) with `user_role` prefixes in text and ticket-level metadata; identically to `/query` it hides chunk metadata and `url_suffix` unless `debug=true` is provided.
 - `GET /api/v1/tickets/{ticket_id}/details` – rebuild the full ticket `details` using only Qdrant chunks.
 - `GET /api/v1/tickets/{ticket_id}/thread` – return the whole ticket thread (details + chronological updates) via Qdrant-only reconstruction.
 
@@ -157,6 +157,7 @@ WantedBy=timers.target
 After creating the units run `systemctl daemon-reload && systemctl enable --now hd_ke-nightly-sync.timer`.
 
 ## Changelog
+- 0.8.0 – `/query` and `/query/threads` now hide chunk metadata (`chunk_*`, `sentence_*`, `details_hash`, `url_suffix`) by default, with the new `debug` flag enabling full payloads in responses.
 - 0.7.1 – recommended `THREAD_FILTER_PATTERNS` (env config) now includes whitespace-tolerant versions of the dot/CRLF filters to remove empty records before chunking.
 - 0.7.0 – added `scripts/setup_nightly_sync_env.sh` + `scripts/requirements.txt` for a dedicated virtualenv tailored to `nightly_sync.py`.
 - 0.6.0 – added `scripts/nightly_sync.py` helper with logging and documentation for timer/systemd setups.

@@ -75,10 +75,11 @@ class QueryRequest(BaseModel):
     query: str  # Treść zapytania tekstowego
     limit: int = Field(default=5, ge=1, le=50)  # Maksymalna liczba wyników
     filters: Optional[QueryFilters] = None  # Opcjonalne filtry wyników
+    debug: bool = False  # Zwracaj pełny payload chunków (domyślnie wyłączone)
 
 
 class Passage(BaseModel):
-    text: str  # Tekst znalezionego fragmentu
+    detail_chunk: str  # Tekst znalezionego fragmentu
     score: float  # Wynik podobieństwa kosinusowego
     source: str  # Źródło fragmentu (ticket/update)
     ticket_id: Optional[int] = None  # Identyfikator zgłoszenia
@@ -99,7 +100,6 @@ class Passage(BaseModel):
     sentence_start: Optional[int] = None  # Indeks pierwszego zdania
     sentence_end: Optional[int] = None  # Indeks ostatniego zdania
     details_hash: Optional[str] = None  # Hash całego tekstu
-    chunk_text: Optional[str] = None  # Tekst chunku (alias `detail_chunk`)
 
 
 class QueryResponse(BaseModel):

@@ -43,8 +43,8 @@ THREAD_FILTER_PATTERNS=["^\\s*\\.\\s*$","^\\s*\\r?\\n\\s*$","^\\s*\\.\\s*\\r?\\n
 - `GET /api/v1/health` – healthcheck.
 - `GET /api/v1/info` – wersja, konfiguracja bazowa, model embeddingowy.
 - `POST /api/v1/sync` – uruchamia synchronizację (opcjonalne filtry, `dry_run`).
-- `POST /api/v1/query` – wyszukiwanie semantyczne z filtrami i cytowaniami.
-- `POST /api/v1/query/threads` – wyszukiwanie semantyczne i zwrócenie pełnych wątków (ticket + aktualizacje) z prefiksem `user_role` w treści oraz metadanymi agregowanymi z ticketu (status, tagi, URL, czas utworzenia, czas ostatniej modyfikacji).
+- `POST /api/v1/query` – wyszukiwanie semantyczne z filtrami i cytowaniami; domyślnie ukrywa pola `chunk_no`, `chunk_total`, `chunk_start`, `chunk_end`, `sentence_start`, `sentence_end`, `details_hash` oraz `url_suffix`, a ustawienie `debug=true` w body powoduje zwrócenie pełnego payloadu chunków.
+- `POST /api/v1/query/threads` – wyszukiwanie semantyczne i zwrócenie pełnych wątków (ticket + aktualizacje) z prefiksem `user_role` w treści oraz metadanymi agregowanymi z ticketu; podobnie jak `/query`, domyślnie ukrywa pola chunkowe i `url_suffix`, a `debug=true` przywraca pełne payloady.
 - `GET /api/v1/tickets/{ticket_id}/details` – rekonstrukcja pełnego `details` ticketu na podstawie chunków z Qdrant.
 - `GET /api/v1/tickets/{ticket_id}/thread` – pełen wątek: zgłoszenie + chronologiczne aktualizacje (również składane tylko na podstawie Qdrant).
 
@@ -158,6 +158,7 @@ WantedBy=timers.target
 Po utworzeniu jednostek wykonaj `systemctl daemon-reload && systemctl enable --now hd_ke-nightly-sync.timer`.
 
 ## Changelog
+- 0.8.0 – endpointy `/query` i `/query/threads` domyślnie ukrywają pola chunkowe (`chunk_*`, `sentence_*`, `details_hash`, `url_suffix`), a nowy parametr `debug` pozwala na zwrócenie pełnego payloadu w odpowiedzi.
 - 0.7.1 – rozbudowane rekomendowane `THREAD_FILTER_PATTERNS` (konfiguracja/env) o wersje tolerujące spacje dla filtrów `.` / `\r\n`, aby lepiej usuwać puste wpisy przed chunkowaniem.
 - 0.7.0 – `scripts/setup_nightly_sync_env.sh` + `scripts/requirements.txt` do szybkiego zbudowania odseparowanego virtualenv dla `nightly_sync.py`.
 - 0.6.0 – skrypt `scripts/nightly_sync.py` do nocnej synchronizacji z logowaniem, dokumentacja konfiguracji timerów/systemd.

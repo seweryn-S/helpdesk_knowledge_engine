@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import JSONResponse
 
 from app.api.deps import get_embedding_client, get_qdrant, get_settings
 from app.clients.embeddings import EmbeddingClient
@@ -15,7 +16,27 @@ from app.services.query import QueryService
 from app.services.thread import ThreadService
 from app.services.thread_query import ThreadQueryService
 
+DEBUG_ONLY_FIELDS = {
+    "chunk_no",
+    "chunk_total",
+    "chunk_start",
+    "chunk_end",
+    "sentence_start",
+    "sentence_end",
+    "details_hash",
+    "url_suffix",
+}
+
 router = APIRouter()
+
+
+def _sanitize_response(model: QueryResponse | ThreadQueryResponse) -> JSONResponse:
+    response_payload = model.model_dump(mode="json")
+    for result in response_payload.get("results", []):
+        if isinstance(result, dict):
+            for field in DEBUG_ONLY_FIELDS:
+                result.pop(field, None)
+    return JSONResponse(content=response_payload)
 
 
 @router.post(
@@ -32,7 +53,10 @@ async def query(
     settings: Settings = Depends(get_settings),
 ) -> QueryResponse:
     service = QueryService(embedding_client, qdrant, settings)
-    return await service.query(body)
+    response = await service.query(body)
+    if body.debug:
+        return response
+    return _sanitize_response(response)
 
 
 @router.post(
@@ -49,7 +73,10 @@ async def query_threads(
     settings: Settings = Depends(get_settings),
 ) -> ThreadQueryResponse:
     service = ThreadQueryService(embedding_client, qdrant, settings)
-    return await service.query_threads(body)
+    response = await service.query_threads(body)
+    if body.debug:
+        return response
+    return _sanitize_response(response)
 
 
 @router.get(

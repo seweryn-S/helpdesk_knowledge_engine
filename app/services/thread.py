@@ -56,7 +56,7 @@ class ThreadService:
                 chunk_end=payload.get("chunk_end", 0),
                 sentence_start=payload.get("sentence_start", 0),
                 sentence_end=payload.get("sentence_end", 0),
-                text=payload.get("detail_chunk") or payload.get("chunk_text") or payload.get("text") or "",
+                text=(payload.get("detail_chunk") or ""),
                 details_hash=payload.get("details_hash"),
             )
             for idx, payload in enumerate(chunks)
@@ -98,7 +98,7 @@ class ThreadService:
             [
                 payload
                 for payload in payloads
-                if payload.get("detail_chunk") or payload.get("chunk_text") or payload.get("text")
+                if payload.get("detail_chunk") is not None
             ],
             key=lambda payload: (
                 payload.get("chunk_start", 0),
@@ -112,9 +112,7 @@ class ThreadService:
         for payload in chunks:
             chunk_text = payload.get("detail_chunk")
             if chunk_text is None:
-                chunk_text = payload.get("chunk_text")
-            if chunk_text is None:
-                chunk_text = payload.get("text", "")
+                chunk_text = ""
             parts.append(chunk_text)
         return "".join(parts)
 

@@ -40,13 +40,14 @@ class QueryService:
         passages: list[Passage] = []
         for p in selected:
             payload = p.payload or {}
-            chunk_text = payload.get("detail_chunk") or payload.get("chunk_text") or payload.get("text") or ""
-            passage_text = chunk_text.strip() or chunk_text
+            chunk_text = payload.get("detail_chunk")
+            if chunk_text is None:
+                chunk_text = ""
             url_suffix = payload.get("url_suffix")
             full_url = f"{self.ticket_url_prefix}{url_suffix}" if url_suffix else None
             passages.append(
                 Passage(
-                    text=passage_text,
+                    detail_chunk=chunk_text,
                     score=p.score or 0.0,
                     source=payload.get("source", "unknown"),
                     ticket_id=payload.get("ticket_id"),
@@ -67,7 +68,6 @@ class QueryService:
                     sentence_start=payload.get("sentence_start"),
                     sentence_end=payload.get("sentence_end"),
                     details_hash=payload.get("details_hash"),
-                    chunk_text=chunk_text,
                 )
             )
         return QueryResponse(query=request.query, results=passages)
