@@ -21,6 +21,7 @@ from app.models.schemas import (
     UpdateDTO,
 )
 from app.utils.chunking import TextChunk, chunk_text, merge_texts
+from app.utils.text_content_filter import TextContentFilter
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +71,8 @@ class SyncService:
         self.embedding_client = embedding_client
         self.qdrant_repo = qdrant_repo
         self._thread_filter_patterns = self._compile_thread_filters(settings.thread_filter_patterns)
+        self._text_content_filter = TextContentFilter()
+        self._dummy_vector: Optional[List[float]] = None
 
     async def run(self, state: SyncState, request: SyncRequest) -> SyncResult:
         filters = request.filters or SyncFilters()
@@ -135,13 +138,15 @@ class SyncService:
                 break
             tickets = [TicketDTO.model_validate(t) for t in tickets_raw]
             points = []
-            texts = []
-            metas = []
+            texts: List[str] = []
+            metas_with_vector: List[Dict[str, Any]] = []
+            metas_without_vector: List[Dict[str, Any]] = []
             for ticket in tickets:
                 if self._should_skip_details(ticket.details):
                     logger.info("Skipping ticket %s due to thread filter match", ticket.id)
                     continue
                 self._ticket_count += 1
+                is_semantic = self._text_content_filter.is_semantic(ticket.details)
                 chunks = chunk_text(ticket.details, chunk_size)
                 details_hash = self._hash_text(ticket.details)
                 for idx, chunk in enumerate(chunks):
@@ -154,11 +159,30 @@ class SyncService:
                         len(chunks),
                         details_hash,
                     )
-                    texts.append(text)
-                    metas.append(payload)
-            if texts and not dry_run:
-                embeddings = await self.embedding_client.embed_texts(texts, mode="document")
-                for payload, vector in zip(metas, embeddings):
+                    payload["semantic_empty"] = not is_semantic
+                    if is_semantic:
+                        texts.append(text)
+                        metas_with_vector.append(payload)
+                    else:
+                        metas_without_vector.append(payload)
+            if not dry_run:
+                if texts:
+                    embeddings = await self.embedding_client.embed_texts(texts, mode="document")
+                    for payload, vector in zip(metas_with_vector, embeddings):
+                        payload_copy = dict(payload)
+                        raw_id = payload_copy.get("id")
+                        point_id = self._make_point_id(str(raw_id)) if raw_id is not None else None
+                        if raw_id is not None:
+                            payload_copy["logical_id"] = raw_id  # logiczne ID chunku używane wyłącznie w payloadzie
+                            payload_copy.pop("id", None)
+                        points.append(
+                            qmodels.PointStruct(
+                                id=point_id,
+                                payload=payload_copy,
+                                vector=vector,
+                            )
+                        )
+                for payload in metas_without_vector:
                     payload_copy = dict(payload)
                     raw_id = payload_copy.get("id")
                     point_id = self._make_point_id(str(raw_id)) if raw_id is not None else None
@@ -169,11 +193,12 @@ class SyncService:
                         qmodels.PointStruct(
                             id=point_id,
                             payload=payload_copy,
-                            vector=vector,
+                            vector=self._get_dummy_vector(),
                         )
                     )
-                self.qdrant_repo.upsert_ticket_points(points)
-                self._points_upserted += len(points)
+                if points:
+                    self.qdrant_repo.upsert_ticket_points(points)
+                    self._points_upserted += len(points)
             if tickets:
                 max_mod = max(t.time_modified for t in tickets)
                 last_modified = max_mod if (not last_modified or max_mod > last_modified) else last_modified
@@ -216,8 +241,9 @@ class SyncService:
                 break
             updates = [UpdateDTO.model_validate(u) for u in updates_raw]
             points = []
-            texts = []
-            metas = []
+            texts: List[str] = []
+            metas_with_vector: List[Dict[str, Any]] = []
+            metas_without_vector: List[Dict[str, Any]] = []
             for update in updates:
                 if self._should_skip_details(update.details):
                     logger.info(
@@ -227,6 +253,7 @@ class SyncService:
                     )
                     continue
                 self._update_count += 1
+                is_semantic = self._text_content_filter.is_semantic(update.details)
                 chunks = chunk_text(update.details, chunk_size)
                 details_hash = self._hash_text(update.details)
                 for idx, chunk in enumerate(chunks):
@@ -239,13 +266,32 @@ class SyncService:
                         len(chunks),
                         details_hash,
                     )
-                    texts.append(text)
-                    metas.append(payload)
+                    payload["semantic_empty"] = not is_semantic
+                    if is_semantic:
+                        texts.append(text)
+                        metas_with_vector.append(payload)
+                    else:
+                        metas_without_vector.append(payload)
                     if update.hidden:
                         self._points_hidden += 1
-            if texts and not dry_run:
-                embeddings = await self.embedding_client.embed_texts(texts, mode="document")
-                for payload, vector in zip(metas, embeddings):
+            if not dry_run:
+                if texts:
+                    embeddings = await self.embedding_client.embed_texts(texts, mode="document")
+                    for payload, vector in zip(metas_with_vector, embeddings):
+                        payload_copy = dict(payload)
+                        raw_id = payload_copy.get("id")
+                        point_id = self._make_point_id(str(raw_id)) if raw_id is not None else None
+                        if raw_id is not None:
+                            payload_copy["logical_id"] = raw_id  # logiczne ID chunku używane wyłącznie w payloadzie
+                            payload_copy.pop("id", None)
+                        points.append(
+                            qmodels.PointStruct(
+                                id=point_id,
+                                payload=payload_copy,
+                                vector=vector,
+                            )
+                        )
+                for payload in metas_without_vector:
                     payload_copy = dict(payload)
                     raw_id = payload_copy.get("id")
                     point_id = self._make_point_id(str(raw_id)) if raw_id is not None else None
@@ -256,11 +302,12 @@ class SyncService:
                         qmodels.PointStruct(
                             id=point_id,
                             payload=payload_copy,
-                            vector=vector,
+                            vector=self._get_dummy_vector(),
                         )
                     )
-                self.qdrant_repo.upsert_update_points(points)
-                self._points_upserted += len(points)
+                if points:
+                    self.qdrant_repo.upsert_update_points(points)
+                    self._points_upserted += len(points)
             if updates:
                 max_mod = max(u.time_modified for u in updates)
                 last_modified = max_mod if (not last_modified or max_mod > last_modified) else last_modified
@@ -367,3 +414,12 @@ class SyncService:
                 logger.debug("Details filtered out by pattern '%s'", pattern.pattern)
                 return True
         return False
+
+    def _get_dummy_vector(self) -> List[float]:
+        if self._dummy_vector is not None:
+            return self._dummy_vector
+        dim = getattr(self.embedding_client, "resolved_dimension", None) or self.settings.embedding_dim
+        if dim is None:
+            raise RuntimeError("Embedding dimension is not configured; cannot build dummy vector")
+        self._dummy_vector = [0.0] * int(dim)
+        return self._dummy_vector

@@ -160,6 +160,7 @@ WantedBy=timers.target
 After creating the units run `systemctl daemon-reload && systemctl enable --now hd_ke-nightly-sync.timer`.
 
 ## Changelog
+- 0.9.0 – added a semantic content filter for Help Desk ticket/update details (`TextContentFilter`), tagging non-informative chunks with `semantic_empty` and storing them with zero vectors instead of real embeddings; vector search hides them by default (`hide_semantic_empty` in filters) while keeping them available when reconstructing full threads.
 - 0.8.2 – switched the default `EMBEDDING_DOCUMENT_PREFIX` to an empty string so document chunks stay untouched unless a prefix is explicitly required.
 - 0.8.1 – added `EMBEDDING_DOCUMENT_PREFIX` and document-mode prefixes when embedding sync chunks.
 - 0.8.0 – `/query` and `/query/threads` now hide chunk metadata (`chunk_*`, `sentence_*`, `details_hash`, `url_suffix`) by default, with the new `debug` flag enabling full payloads in responses.

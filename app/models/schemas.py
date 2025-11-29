@@ -69,6 +69,7 @@ class QueryFilters(BaseModel):
     user_roles: Optional[List[str]] = None  # Role autorów aktualizacji
     update_types: Optional[List[str]] = None  # Typy aktualizacji
     hide_hidden: bool = True  # Domyślnie pomijamy ukryte wpisy
+    hide_semantic_empty: bool = True  # Domyślnie pomijamy semantycznie puste wpisy
 
 
 class QueryRequest(BaseModel):

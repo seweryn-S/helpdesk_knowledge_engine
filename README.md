@@ -161,6 +161,7 @@ WantedBy=timers.target
 Po utworzeniu jednostek wykonaj `systemctl daemon-reload && systemctl enable --now hd_ke-nightly-sync.timer`.
 
 ## Changelog
+- 0.9.0 – moduł filtrujący semantycznie puste treści aktualizacji/ticketów (`TextContentFilter`), oznaczanie takich chunków flagą `semantic_empty` i użycie wektorów zerowych zamiast embeddingów; wyniki zapytań wektorowych domyślnie je ukrywają (`hide_semantic_empty` w filtrach), ale nadal są widoczne przy odtwarzaniu pełnych wątków.
 - 0.8.2 – domyślny `EMBEDDING_DOCUMENT_PREFIX` to teraz pusty string, aby nie modyfikować treści chunków, jeśli prefiks nie jest wymagany.
 - 0.8.1 – dodana zmienna `EMBEDDING_DOCUMENT_PREFIX` i wsparcie dla osobnego prefiksu chunków dokumentów podczas embeddingu.
 - 0.8.0 – endpointy `/query` i `/query/threads` domyślnie ukrywają pola chunkowe (`chunk_*`, `sentence_*`, `details_hash`, `url_suffix`), a nowy parametr `debug` pozwala na zwrócenie pełnego payloadu w odpowiedzi.

@@ -90,6 +90,13 @@ class ThreadQueryService:
                     match=qmodels.MatchValue(value=False),
                 )
             )
+        if getattr(filters, "hide_semantic_empty", False):
+            must.append(
+                qmodels.FieldCondition(
+                    key="semantic_empty",
+                    match=qmodels.MatchValue(value=False),
+                )
+            )
         if filters.status:
             must.append(
                 qmodels.FieldCondition(
