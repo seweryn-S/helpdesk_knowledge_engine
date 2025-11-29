@@ -157,7 +157,7 @@ class SyncService:
                     texts.append(text)
                     metas.append(payload)
             if texts and not dry_run:
-                embeddings = await self.embedding_client.embed_texts(texts)
+                embeddings = await self.embedding_client.embed_texts(texts, mode="document")
                 for payload, vector in zip(metas, embeddings):
                     payload_copy = dict(payload)
                     raw_id = payload_copy.get("id")
@@ -244,7 +244,7 @@ class SyncService:
                     if update.hidden:
                         self._points_hidden += 1
             if texts and not dry_run:
-                embeddings = await self.embedding_client.embed_texts(texts)
+                embeddings = await self.embedding_client.embed_texts(texts, mode="document")
                 for payload, vector in zip(metas, embeddings):
                     payload_copy = dict(payload)
                     raw_id = payload_copy.get("id")

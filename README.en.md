@@ -26,6 +26,7 @@ EMBEDDING_MODEL_NAME=your-model
 EMBEDDING_CONTEXT_LENGTH=512
 # Optional if known: EMBEDDING_DIM=768
 EMBEDDING_PROMPT_PREFIX=
+EMBEDDING_DOCUMENT_PREFIX=
 SYNC_CHECKPOINT_PATH=/var/lib/hd_ke/state.db
 HD_KE_DATA_DIR=/srv/hd_ke
 LOG_LEVEL=INFO  # set to DEBUG to log detailed Help Desk API requests/responses
@@ -33,6 +34,8 @@ THREAD_FILTER_PATTERNS=["^\\s*\\.\\s*$","^\\s*\\r?\\n\\s*$","^\\s*\\.\\s*\\r?\\n
 ```
 
 `THREAD_FILTER_PATTERNS` accepts a list of regular expressions (JSON, comma- or newline-separated) that causes tickets/updates to be skipped entirely during sync. If the variable is unset we fall back to `\.`, `^\r?\n$`, `^\.\r?\n$`, and `^\r?\n\r?\n$`. The sample `deploy/hd_ke.default` file shows a more permissive configuration (`^\s*\.\s*$`, `^\s*\r?\n\s*$`, `^\s*\.\s*\r?\n\s*$`, `^\s*\r?\n\s*\r?\n\s*$`) so that the filters still trigger when users insert stray spaces around dots or blank lines. Adjust the list to match your data (e.g. `^\s*$`) to avoid discarding valid content.
+
+`EMBEDDING_PROMPT_PREFIX` is prepended to semantic queries (e.g. `query: <your question>`), whereas `EMBEDDING_DOCUMENT_PREFIX` is applied to document chunks during sync (e.g. `passage: <chunk>`). Both are empty by default – set them only if your embedding model requires explicit hints.
 
 ### Thread content filter
 - The filter applies to both tickets and updates – once a regex matches, the record is no longer chunked, embedded or upserted to Qdrant.
@@ -157,6 +160,8 @@ WantedBy=timers.target
 After creating the units run `systemctl daemon-reload && systemctl enable --now hd_ke-nightly-sync.timer`.
 
 ## Changelog
+- 0.8.2 – switched the default `EMBEDDING_DOCUMENT_PREFIX` to an empty string so document chunks stay untouched unless a prefix is explicitly required.
+- 0.8.1 – added `EMBEDDING_DOCUMENT_PREFIX` and document-mode prefixes when embedding sync chunks.
 - 0.8.0 – `/query` and `/query/threads` now hide chunk metadata (`chunk_*`, `sentence_*`, `details_hash`, `url_suffix`) by default, with the new `debug` flag enabling full payloads in responses.
 - 0.7.1 – recommended `THREAD_FILTER_PATTERNS` (env config) now includes whitespace-tolerant versions of the dot/CRLF filters to remove empty records before chunking.
 - 0.7.0 – added `scripts/setup_nightly_sync_env.sh` + `scripts/requirements.txt` for a dedicated virtualenv tailored to `nightly_sync.py`.

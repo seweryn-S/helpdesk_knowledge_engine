@@ -26,6 +26,7 @@ EMBEDDING_MODEL_NAME=your-model
 EMBEDDING_CONTEXT_LENGTH=512
 # Opcjonalnie, jeśli znamy: EMBEDDING_DIM=768
 EMBEDDING_PROMPT_PREFIX=
+EMBEDDING_DOCUMENT_PREFIX=
 SYNC_CHECKPOINT_PATH=/var/lib/hd_ke/state.db
 HD_KE_DATA_DIR=/srv/hd_ke
 LOG_LEVEL=INFO  # ustaw na DEBUG, aby logować szczegóły zapytań do Help Desk API
@@ -33,6 +34,8 @@ THREAD_FILTER_PATTERNS=["^\\s*\\.\\s*$","^\\s*\\r?\\n\\s*$","^\\s*\\.\\s*\\r?\\n
 ```
 
 `THREAD_FILTER_PATTERNS` przyjmuje listę wyrażeń regularnych (JSON, przecinki lub nowe linie), które powodują całkowite pomijanie zgłoszeń i aktualizacji już na etapie synchronizacji. W domyślnym fallbacku (gdy zmienna nie jest ustawiona) używamy zestawu `\.`, `^\r?\n$`, `^\.\r?\n$` oraz `^\r?\n\r?\n$`. Przykładowa konfiguracja w `deploy/hd_ke.default` prezentuje bardziej tolerancyjne wzorce (`^\s*\.\s*$`, `^\s*\r?\n\s*$`, `^\s*\.\s*\r?\n\s*$`, `^\s*\r?\n\s*\r?\n\s*$`), dzięki czemu filtry działają również na wpisach zawierających dodatkowe spacje przed/po kropce lub pustych liniach. W praktyce warto dopasować wzorce do realnych danych (np. `^\s*$`), aby nie usuwać nadmiarowo treści.
+
+`EMBEDDING_PROMPT_PREFIX` jest dodawany przed tekstem zapytań (np. `query: <twoje zapytanie>`), a `EMBEDDING_DOCUMENT_PREFIX` przed chunkami dokumentów podczas synchronizacji (np. `passage: <fragment>`). Domyślnie oba są puste – ustaw odpowiednie wartości tylko wtedy, gdy model embeddingowy wymaga konkretnych prefixów.
 
 ### Filtr niestotnych treści
 - Filtr działa jednakowo dla zgłoszeń i aktualizacji – rekord pasujący do któregokolwiek regexu nie jest chunkowany, embedowany ani upsertowany do Qdrant.
@@ -158,6 +161,8 @@ WantedBy=timers.target
 Po utworzeniu jednostek wykonaj `systemctl daemon-reload && systemctl enable --now hd_ke-nightly-sync.timer`.
 
 ## Changelog
+- 0.8.2 – domyślny `EMBEDDING_DOCUMENT_PREFIX` to teraz pusty string, aby nie modyfikować treści chunków, jeśli prefiks nie jest wymagany.
+- 0.8.1 – dodana zmienna `EMBEDDING_DOCUMENT_PREFIX` i wsparcie dla osobnego prefiksu chunków dokumentów podczas embeddingu.
 - 0.8.0 – endpointy `/query` i `/query/threads` domyślnie ukrywają pola chunkowe (`chunk_*`, `sentence_*`, `details_hash`, `url_suffix`), a nowy parametr `debug` pozwala na zwrócenie pełnego payloadu w odpowiedzi.
 - 0.7.1 – rozbudowane rekomendowane `THREAD_FILTER_PATTERNS` (konfiguracja/env) o wersje tolerujące spacje dla filtrów `.` / `\r\n`, aby lepiej usuwać puste wpisy przed chunkowaniem.
 - 0.7.0 – `scripts/setup_nightly_sync_env.sh` + `scripts/requirements.txt` do szybkiego zbudowania odseparowanego virtualenv dla `nightly_sync.py`.

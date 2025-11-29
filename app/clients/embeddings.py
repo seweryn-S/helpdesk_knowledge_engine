@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import logging
-from typing import List, Optional
+from typing import List, Optional, Literal
 
 import httpx
 
 from app.core.config import Settings
+
+EmbeddingInputMode = Literal["query", "document"]
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +19,7 @@ class EmbeddingClient:
         self.base_url = str(settings.embedding_api_base_url).rstrip("/")
         self.model_name = settings.embedding_model_name
         self.prompt_prefix = settings.embedding_prompt_prefix
+        self.document_prefix = settings.embedding_document_prefix
         self.context_length = settings.embedding_context_length
 
     @property
@@ -26,15 +29,24 @@ class EmbeddingClient:
             headers["Authorization"] = f"Bearer {self.settings.embedding_api_key}"
         return headers
 
-    def _prepare_inputs(self, texts: List[str]) -> List[str]:
-        if not self.prompt_prefix:
+    def _prepare_inputs(self, texts: List[str], mode: EmbeddingInputMode) -> List[str]:
+        if mode == "document":
+            prefix = self.document_prefix
+        else:
+            prefix = self.prompt_prefix
+        if not prefix:
             return texts
-        return [f"{self.prompt_prefix}{text}" for text in texts]
+        return [f"{prefix}{text}" for text in texts]
 
-    async def embed_texts(self, texts: List[str]) -> List[List[float]]:
+    async def embed_texts(
+        self,
+        texts: List[str],
+        *,
+        mode: EmbeddingInputMode = "query",
+    ) -> List[List[float]]:
         if not texts:
             return []
-        inputs = self._prepare_inputs(texts)
+        inputs = self._prepare_inputs(texts, mode)
         payload = {"model": self.model_name, "input": inputs}
         response = await self.http_client.post(
             f"{self.base_url}/embeddings",
