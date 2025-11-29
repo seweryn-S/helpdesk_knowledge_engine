@@ -15,6 +15,14 @@ def test_should_skip_details_matches_regex() -> None:
     assert service._should_skip_details("no dot here") is False
 
 
+def test_should_skip_details_handles_crlf_patterns() -> None:
+    service = _service_with_patterns([r"^\r?\n$", r"^\.\r?\n$", r"^\r?\n\r?\n$"])
+    assert service._should_skip_details("\r\n") is True
+    assert service._should_skip_details(".\r\n") is True
+    assert service._should_skip_details("\r\n\r\n") is True
+    assert service._should_skip_details("valid text") is False
+
+
 def test_compile_thread_filters_validates_regex() -> None:
     with pytest.raises(ValueError):
         SyncService._compile_thread_filters(["["])

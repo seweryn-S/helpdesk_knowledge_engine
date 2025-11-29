@@ -4,7 +4,7 @@ import hashlib
 import logging
 import re
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Pattern, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Pattern, Sequence
 from uuid import UUID, uuid5
 
 import aiosqlite

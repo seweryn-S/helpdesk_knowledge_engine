@@ -29,10 +29,10 @@ EMBEDDING_PROMPT_PREFIX=
 SYNC_CHECKPOINT_PATH=/var/lib/hd_ke/state.db
 HD_KE_DATA_DIR=/srv/hd_ke
 LOG_LEVEL=INFO  # set to DEBUG to log detailed Help Desk API requests/responses
-THREAD_FILTER_PATTERNS=\\.
+THREAD_FILTER_PATTERNS=["^\\s*\\.\\s*$","^\\s*\\r?\\n\\s*$","^\\s*\\.\\s*\\r?\\n\\s*$","^\\s*\\r?\\n\\s*\\r?\\n\\s*$"]
 ```
 
-`THREAD_FILTER_PATTERNS` accepts a list of regular expressions (JSON, comma- or newline-separated) that causes tickets/updates to be skipped entirely during sync. The default `\.` pattern fulfils the requirement of dropping any entry whose `details` contain a dot. In practice you will likely want to narrow it down (e.g. `^\.$`, `^\s*$`) so that legitimate content is not discarded.
+`THREAD_FILTER_PATTERNS` accepts a list of regular expressions (JSON, comma- or newline-separated) that causes tickets/updates to be skipped entirely during sync. If the variable is unset we fall back to `\.`, `^\r?\n$`, `^\.\r?\n$`, and `^\r?\n\r?\n$`. The sample `deploy/hd_ke.default` file shows a more permissive configuration (`^\s*\.\s*$`, `^\s*\r?\n\s*$`, `^\s*\.\s*\r?\n\s*$`, `^\s*\r?\n\s*\r?\n\s*$`) so that the filters still trigger when users insert stray spaces around dots or blank lines. Adjust the list to match your data (e.g. `^\s*$`) to avoid discarding valid content.
 
 ### Thread content filter
 - The filter applies to both tickets and updates – once a regex matches, the record is no longer chunked, embedded or upserted to Qdrant.
@@ -157,6 +157,7 @@ WantedBy=timers.target
 After creating the units run `systemctl daemon-reload && systemctl enable --now hd_ke-nightly-sync.timer`.
 
 ## Changelog
+- 0.7.1 – recommended `THREAD_FILTER_PATTERNS` (env config) now includes whitespace-tolerant versions of the dot/CRLF filters to remove empty records before chunking.
 - 0.7.0 – added `scripts/setup_nightly_sync_env.sh` + `scripts/requirements.txt` for a dedicated virtualenv tailored to `nightly_sync.py`.
 - 0.6.0 – added `scripts/nightly_sync.py` helper with logging and documentation for timer/systemd setups.
 - 0.5.0 – new `/query/threads` endpoint: returns full threads (ticket + updates) reconstructed from chunks with `user_role` prefixes in text and ticket metadata (status, tags, URL, time_created, time_modified from the latest entry).

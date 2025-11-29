@@ -29,10 +29,10 @@ EMBEDDING_PROMPT_PREFIX=
 SYNC_CHECKPOINT_PATH=/var/lib/hd_ke/state.db
 HD_KE_DATA_DIR=/srv/hd_ke
 LOG_LEVEL=INFO  # ustaw na DEBUG, aby logować szczegóły zapytań do Help Desk API
-THREAD_FILTER_PATTERNS=\\.
+THREAD_FILTER_PATTERNS=["^\\s*\\.\\s*$","^\\s*\\r?\\n\\s*$","^\\s*\\.\\s*\\r?\\n\\s*$","^\\s*\\r?\\n\\s*\\r?\\n\\s*$"]
 ```
 
-`THREAD_FILTER_PATTERNS` przyjmuje listę wyrażeń regularnych (JSON, przecinki lub nowe linie), które powodują całkowite pomijanie zgłoszeń i aktualizacji już na etapie synchronizacji. Domyślny wzorzec `\.` spełnia wymaganie filtrowania wszystkich wpisów zawierających kropkę w `details`; w praktyce warto ustawić własny wzorzec (np. `^\.$`, `^\s*$`), aby nie usuwać nadmiarowo treści.
+`THREAD_FILTER_PATTERNS` przyjmuje listę wyrażeń regularnych (JSON, przecinki lub nowe linie), które powodują całkowite pomijanie zgłoszeń i aktualizacji już na etapie synchronizacji. W domyślnym fallbacku (gdy zmienna nie jest ustawiona) używamy zestawu `\.`, `^\r?\n$`, `^\.\r?\n$` oraz `^\r?\n\r?\n$`. Przykładowa konfiguracja w `deploy/hd_ke.default` prezentuje bardziej tolerancyjne wzorce (`^\s*\.\s*$`, `^\s*\r?\n\s*$`, `^\s*\.\s*\r?\n\s*$`, `^\s*\r?\n\s*\r?\n\s*$`), dzięki czemu filtry działają również na wpisach zawierających dodatkowe spacje przed/po kropce lub pustych liniach. W praktyce warto dopasować wzorce do realnych danych (np. `^\s*$`), aby nie usuwać nadmiarowo treści.
 
 ### Filtr niestotnych treści
 - Filtr działa jednakowo dla zgłoszeń i aktualizacji – rekord pasujący do któregokolwiek regexu nie jest chunkowany, embedowany ani upsertowany do Qdrant.
@@ -158,6 +158,7 @@ WantedBy=timers.target
 Po utworzeniu jednostek wykonaj `systemctl daemon-reload && systemctl enable --now hd_ke-nightly-sync.timer`.
 
 ## Changelog
+- 0.7.1 – rozbudowane rekomendowane `THREAD_FILTER_PATTERNS` (konfiguracja/env) o wersje tolerujące spacje dla filtrów `.` / `\r\n`, aby lepiej usuwać puste wpisy przed chunkowaniem.
 - 0.7.0 – `scripts/setup_nightly_sync_env.sh` + `scripts/requirements.txt` do szybkiego zbudowania odseparowanego virtualenv dla `nightly_sync.py`.
 - 0.6.0 – skrypt `scripts/nightly_sync.py` do nocnej synchronizacji z logowaniem, dokumentacja konfiguracji timerów/systemd.
 - 0.5.0 – nowy endpoint `/query/threads`: zwraca pełne wątki (ticket + aktualizacje) sklejone z chunków z prefiksami `user_role` w treści i metadanymi z ticketu (status, tagi, URL, time_created, time_modified z ostatniego wpisu).

@@ -37,7 +37,9 @@ class Settings(BaseSettings):
     embedding_context_length: int = Field(default=512)
     embedding_prompt_prefix: str = Field(default="")
     embedding_dim: Optional[int] = Field(default=None)
-    thread_filter_patterns: List[str] = Field(default_factory=lambda: [r"\."])
+    thread_filter_patterns: List[str] = Field(
+        default_factory=lambda: [r"\.", r"^\r?\n$", r"^\.\r?\n$", r"^\r?\n\r?\n$"]
+    )
 
     sync_checkpoint_path: str = Field(default="/var/lib/hd_ke/state.db")
     sync_page_size: int = Field(default=100)

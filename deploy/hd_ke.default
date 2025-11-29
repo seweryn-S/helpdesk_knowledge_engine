@@ -18,4 +18,9 @@ SYNC_CHECKPOINT_PATH=/var/lib/hd_ke/state.db
 HD_KE_DATA_DIR=/srv/hd_ke
 LOG_LEVEL=INFO
 # Regex patterns (comma/newline separated or JSON) to skip entire tickets/updates
-THREAD_FILTER_PATTERNS=\\.
+THREAD_FILTER_PATTERNS=[
+  "^\\s*\\.\\s*$",
+  "^\\s*\\r?\\n\\s*$",
+  "^\\s*\\.\\s*\\r?\\n\\s*$",
+  "^\\s*\\r?\\n\\s*\\r?\\n\\s*$"
+]
