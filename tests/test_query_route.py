@@ -81,6 +81,7 @@ async def test_query_endpoint_hides_debug_fields(monkeypatch):
         embedding_client=None,
         qdrant=None,
         settings=_settings(),
+        debug=False,
     )
 
     assert isinstance(response, JSONResponse)
@@ -96,13 +97,14 @@ async def test_query_endpoint_hides_debug_fields(monkeypatch):
 @pytest.mark.asyncio
 async def test_query_endpoint_returns_full_payload_in_debug(monkeypatch):
     monkeypatch.setattr(routes_query, "QueryService", DummyQueryService)
-    body = QueryRequest(query="hello", debug=True)
+    body = QueryRequest(query="hello")
 
     response = await routes_query.query(
         body=body,
         embedding_client=None,
         qdrant=None,
         settings=_settings(),
+        debug=True,
     )
 
     assert isinstance(response, QueryResponse)
@@ -124,6 +126,7 @@ async def test_query_threads_endpoint_hides_debug_fields(monkeypatch):
         embedding_client=None,
         qdrant=None,
         settings=_settings(),
+        debug=False,
     )
 
     assert isinstance(response, JSONResponse)
@@ -136,13 +139,14 @@ async def test_query_threads_endpoint_hides_debug_fields(monkeypatch):
 @pytest.mark.asyncio
 async def test_query_threads_endpoint_returns_full_payload_in_debug(monkeypatch):
     monkeypatch.setattr(routes_query, "ThreadQueryService", DummyThreadQueryService)
-    body = QueryRequest(query="threads", debug=True)
+    body = QueryRequest(query="threads")
 
     response = await routes_query.query_threads(
         body=body,
         embedding_client=None,
         qdrant=None,
         settings=_settings(),
+        debug=True,
     )
 
     assert isinstance(response, ThreadQueryResponse)

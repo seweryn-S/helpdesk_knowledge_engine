@@ -20,3 +20,5 @@ HD_KE_DATA_DIR=/srv/hd_ke
 LOG_LEVEL=INFO
 # Regex patterns (comma/newline separated or JSON) to skip entire tickets/updates
 THREAD_FILTER_PATTERNS=["^\\s*\\.\\s*$","^\\s*\\r?\\n\\s*$","^\\s*\\.\\s*\\r?\\n\\s*$","^\\s*\\r?\\n\\s*\\r?\\n\\s*$"]
+HELPDESK_CATEGORIES_REFRESH_HOURS=24
+HELPDESK_DEFAULT_CATEGORIES=["wikamp","network","software","mail","ztn","skryba","ekstazjusz","ezd_puw","parking","mzp","kir","teamwww","teta","idcards","violation","usos"]

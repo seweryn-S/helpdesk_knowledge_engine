@@ -22,6 +22,7 @@ router = APIRouter()
     summary="Run sync/ETL from Help Desk to Qdrant",
     description="Fetch tickets and updates incrementally and upsert into Qdrant. Uses checkpoints in SQLite unless overridden by filters.",
     tags=["sync"],
+    include_in_schema=False,
 )
 async def run_sync(
     body: SyncRequest,

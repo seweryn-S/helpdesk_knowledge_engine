@@ -9,6 +9,7 @@
 - **Embeddings**: klient OpenAI‑compatible (endpoint konfigurowalny); wymiar wektora wykrywany przez wywołanie `/embeddings` przy starcie lub brany z config.
 - **Indeks**: dwie kolekcje Qdrant – `hd_ticket_chunks` (zgłoszenia z pełnymi metadanymi payloadu) oraz `hd_update_chunks` (aktualizacje z odchudzonym payloadem i tylko referencją do ticketu). Obie kolekcje przechowują wektor `embedding`, a payload zawiera tylko `url_suffix` (pełny URL składany jest w API).
 - **API**: FastAPI (`/api/v1/query`, `/api/v1/sync`, `/api/v1/info`, `/api/v1/tickets/{id}/details`, `/api/v1/tickets/{id}/thread`, `/health`).
+- **OpenAPI**: spec generowany dynamicznie – dostępne kategorie ticketów są cyklicznie pobierane z Help Desk i publikowane jako `enum` w polu `category` (z fallbackiem na domyślną listę, gdy słownik jest chwilowo niedostępny).
 
 ## Konfiguracja (`/etc/default/hd_ke` → env)
 Przykład:
@@ -31,11 +32,15 @@ SYNC_CHECKPOINT_PATH=/var/lib/hd_ke/state.db
 HD_KE_DATA_DIR=/srv/hd_ke
 LOG_LEVEL=INFO  # ustaw na DEBUG, aby logować szczegóły zapytań do Help Desk API
 THREAD_FILTER_PATTERNS=["^\\s*\\.\\s*$","^\\s*\\r?\\n\\s*$","^\\s*\\.\\s*\\r?\\n\\s*$","^\\s*\\r?\\n\\s*\\r?\\n\\s*$"]
+HELPDESK_CATEGORIES_REFRESH_HOURS=24
+HELPDESK_DEFAULT_CATEGORIES=["wikamp","network","software","mail","ztn","skryba","ekstazjusz","ezd_puw","parking","mzp","kir","teamwww","teta","idcards","violation","usos"]
 ```
 
 `THREAD_FILTER_PATTERNS` przyjmuje listę wyrażeń regularnych (JSON, przecinki lub nowe linie), które powodują całkowite pomijanie zgłoszeń i aktualizacji już na etapie synchronizacji. W domyślnym fallbacku (gdy zmienna nie jest ustawiona) używamy zestawu `\.`, `^\r?\n$`, `^\.\r?\n$` oraz `^\r?\n\r?\n$`. Przykładowa konfiguracja w `deploy/hd_ke.default` prezentuje bardziej tolerancyjne wzorce (`^\s*\.\s*$`, `^\s*\r?\n\s*$`, `^\s*\.\s*\r?\n\s*$`, `^\s*\r?\n\s*\r?\n\s*$`), dzięki czemu filtry działają również na wpisach zawierających dodatkowe spacje przed/po kropce lub pustych liniach. W praktyce warto dopasować wzorce do realnych danych (np. `^\s*$`), aby nie usuwać nadmiarowo treści.
 
 `EMBEDDING_PROMPT_PREFIX` jest dodawany przed tekstem zapytań (np. `query: <twoje zapytanie>`), a `EMBEDDING_DOCUMENT_PREFIX` przed chunkami dokumentów podczas synchronizacji (np. `passage: <fragment>`). Domyślnie oba są puste – ustaw odpowiednie wartości tylko wtedy, gdy model embeddingowy wymaga konkretnych prefixów.
+
+`HELPDESK_CATEGORIES_REFRESH_HOURS` steruje jak często (w godzinach) serwis odświeża słownik kategorii Help Desk wykorzystywany do publikowania listy `enum` w OpenAPI (minimum 1 minuta niezależnie od konfiguracji). `HELPDESK_DEFAULT_CATEGORIES` to lista wartości używana jako bezpieczny fallback, gdy odczyt słownika z Help Desk się nie powiedzie.
 
 ### Filtr niestotnych treści
 - Filtr działa jednakowo dla zgłoszeń i aktualizacji – rekord pasujący do któregokolwiek regexu nie jest chunkowany, embedowany ani upsertowany do Qdrant.
@@ -46,8 +51,8 @@ THREAD_FILTER_PATTERNS=["^\\s*\\.\\s*$","^\\s*\\r?\\n\\s*$","^\\s*\\.\\s*\\r?\\n
 - `GET /api/v1/health` – healthcheck.
 - `GET /api/v1/info` – wersja, konfiguracja bazowa, model embeddingowy.
 - `POST /api/v1/sync` – uruchamia synchronizację (opcjonalne filtry, `dry_run`).
-- `POST /api/v1/query` – wyszukiwanie semantyczne z filtrami i cytowaniami; domyślnie ukrywa pola `chunk_no`, `chunk_total`, `chunk_start`, `chunk_end`, `sentence_start`, `sentence_end`, `details_hash` oraz `url_suffix`, a ustawienie `debug=true` w body powoduje zwrócenie pełnego payloadu chunków.
-- `POST /api/v1/query/threads` – wyszukiwanie semantyczne i zwrócenie pełnych wątków (ticket + aktualizacje) z prefiksem `user_role` w treści oraz metadanymi agregowanymi z ticketu; podobnie jak `/query`, domyślnie ukrywa pola chunkowe i `url_suffix`, a `debug=true` przywraca pełne payloady.
+- `POST /api/v1/query` – wyszukiwanie semantyczne z filtrami i cytowaniami; domyślnie ukrywa pola `chunk_no`, `chunk_total`, `chunk_start`, `chunk_end`, `sentence_start`, `sentence_end`, `details_hash` oraz `url_suffix`, a dopiero dodanie `?debug=true` do adresu powoduje zwrócenie pełnego payloadu chunków.
+- `POST /api/v1/query/threads` – wyszukiwanie semantyczne i zwrócenie pełnych wątków (ticket + aktualizacje) z prefiksem `user_role` w treści oraz metadanymi agregowanymi z ticketu; podobnie jak `/query`, domyślnie ukrywa pola chunkowe i `url_suffix`, a `?debug=true` przywraca pełne payloady.
 - `GET /api/v1/tickets/{ticket_id}/details` – rekonstrukcja pełnego `details` ticketu na podstawie chunków z Qdrant.
 - `GET /api/v1/tickets/{ticket_id}/thread` – pełen wątek: zgłoszenie + chronologiczne aktualizacje (również składane tylko na podstawie Qdrant).
 
@@ -160,7 +165,8 @@ WantedBy=timers.target
 ```
 Po utworzeniu jednostek wykonaj `systemctl daemon-reload && systemctl enable --now hd_ke-nightly-sync.timer`.
 
-## Changelog
+-## Changelog
+- 0.10.0 – płaskie pola filtrów w `/query` i `/query/threads` (bez zagnieżdżonego `filters`), ukryty parametr `?debug=true`, dynamiczne OpenAPI z aktualnym wykazem kategorii (w tym fallback i cykliczny refresh sterowany `HELPDESK_CATEGORIES_REFRESH_HOURS` / `HELPDESK_DEFAULT_CATEGORIES`), uproszczony kontrakt dla LLM.
 - 0.9.0 – moduł filtrujący semantycznie puste treści aktualizacji/ticketów (`TextContentFilter`), oznaczanie takich chunków flagą `semantic_empty` i użycie wektorów zerowych zamiast embeddingów; wyniki zapytań wektorowych domyślnie je ukrywają (`hide_semantic_empty` w filtrach), ale nadal są widoczne przy odtwarzaniu pełnych wątków.
 - 0.8.2 – domyślny `EMBEDDING_DOCUMENT_PREFIX` to teraz pusty string, aby nie modyfikować treści chunków, jeśli prefiks nie jest wymagany.
 - 0.8.1 – dodana zmienna `EMBEDDING_DOCUMENT_PREFIX` i wsparcie dla osobnego prefiksu chunków dokumentów podczas embeddingu.

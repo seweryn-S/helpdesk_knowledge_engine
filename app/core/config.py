@@ -41,10 +41,36 @@ class Settings(BaseSettings):
     thread_filter_patterns: List[str] = Field(
         default_factory=lambda: [r"\.", r"^\r?\n$", r"^\.\r?\n$", r"^\r?\n\r?\n$"]
     )
+    helpdesk_default_categories: List[str] = Field(
+        default_factory=lambda: [
+            "wikamp",
+            "network",
+            "software",
+            "mail",
+            "ztn",
+            "skryba",
+            "ekstazjusz",
+            "ezd_puw",
+            "parking",
+            "mzp",
+            "kir",
+            "teamwww",
+            "teta",
+            "idcards",
+            "violation",
+            "usos",
+        ],
+        description="Fallback Help Desk categories if remote dictionary is unavailable.",
+    )
 
     sync_checkpoint_path: str = Field(default="/var/lib/hd_ke/state.db")
     sync_page_size: int = Field(default=100)
     sync_chunk_size: int = Field(default=512)
+
+    helpdesk_categories_refresh_hours: float = Field(
+        default=24.0,
+        description="How often to refresh Help Desk ticket categories for OpenAPI docs, in hours.",
+    )
 
     log_level: str = Field(default="INFO")
     hd_ke_data_dir: Optional[str] = Field(default=None)

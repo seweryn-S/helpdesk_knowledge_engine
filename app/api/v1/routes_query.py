@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
 
 from app.api.deps import get_embedding_client, get_qdrant, get_settings
@@ -45,16 +45,18 @@ def _sanitize_response(model: QueryResponse | ThreadQueryResponse) -> JSONRespon
     summary="Search Help Desk knowledge base with semantic similarity",
     description="Returns top passages (tickets and updates) with metadata and citations. Supports filters by status, category, tags, roles, update types, and time range.",
     tags=["query"],
+    operation_id="query",
 )
 async def query(
     body: QueryRequest,
     embedding_client: EmbeddingClient = Depends(get_embedding_client),
     qdrant: QdrantRepository = Depends(get_qdrant),
     settings: Settings = Depends(get_settings),
+    debug: bool = Query(False, include_in_schema=False),
 ) -> QueryResponse:
     service = QueryService(embedding_client, qdrant, settings)
     response = await service.query(body)
-    if body.debug:
+    if debug:
         return response
     return _sanitize_response(response)
 
@@ -65,16 +67,18 @@ async def query(
     summary="Search Help Desk knowledge base and return full threads",
     description="Returns top tickets as fully reconstructed threads (ticket details + updates) with metadata assembled from Qdrant payloads.",
     tags=["query"],
+    operation_id="query_threads",
 )
 async def query_threads(
     body: QueryRequest,
     embedding_client: EmbeddingClient = Depends(get_embedding_client),
     qdrant: QdrantRepository = Depends(get_qdrant),
     settings: Settings = Depends(get_settings),
+    debug: bool = Query(False, include_in_schema=False),
 ) -> ThreadQueryResponse:
     service = ThreadQueryService(embedding_client, qdrant, settings)
     response = await service.query_threads(body)
-    if body.debug:
+    if debug:
         return response
     return _sanitize_response(response)
 
@@ -85,6 +89,7 @@ async def query_threads(
     summary="Recreate full ticket details from Qdrant chunks",
     description="Uses Qdrant payload metadata to join all ticket chunks back into the original Help Desk ticket body.",
     tags=["query"],
+    operation_id="ticket_details",
 )
 async def ticket_details(
     ticket_id: int,
@@ -103,6 +108,7 @@ async def ticket_details(
     summary="Return full ticket thread (details + updates)",
     description="Fetches ticket chunks and all update chunks for a ticket, rebuilds the original text for each entry, and returns a concatenated thread.",
     tags=["query"],
+    operation_id="ticket_thread",
 )
 async def ticket_thread(
     ticket_id: int,

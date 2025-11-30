@@ -9,12 +9,22 @@ from app.version import __version__
 router = APIRouter()
 
 
-@router.get("/health", summary="Healthcheck", tags=["meta"])
+@router.get(
+    "/health",
+    summary="Healthcheck",
+    tags=["meta"],
+    operation_id="health",
+)
 async def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
-@router.get("/info", summary="Basic tool info", tags=["meta"])
+@router.get(
+    "/info",
+    summary="Basic tool info",
+    tags=["meta"],
+    operation_id="info",
+)
 async def info(
     settings: Settings = Depends(get_settings),
     embedding_client: EmbeddingClient = Depends(get_embedding_client),

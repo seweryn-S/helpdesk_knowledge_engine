@@ -9,6 +9,7 @@
 - **Embeddings**: OpenAI‑compatible client (configurable endpoint); vector dimension detected via `/embeddings` call on startup or provided in config.
 - **Index**: two Qdrant collections – `hd_ticket_chunks` (tickets with full-thread metadata) and `hd_update_chunks` (updates with lean payloads referencing the parent ticket). Each shard stores the same embedding vector, and payload holds only the `url_suffix`; the REST API rebuilds the full URL.
 - **API**: FastAPI (`/api/v1/query`, `/api/v1/sync`, `/api/v1/info`, `/api/v1/tickets/{id}/details`, `/api/v1/tickets/{id}/thread`, `/health`); Swagger UI enabled.
+- **OpenAPI**: specification is built dynamically – ticket categories are periodically fetched from Help Desk and exposed as the `enum` for the `category` field (with a fallback list when the dictionary is temporarily unavailable).
 
 ## Configuration (`/etc/default/hd_ke` → env)
 Example:
@@ -31,11 +32,15 @@ SYNC_CHECKPOINT_PATH=/var/lib/hd_ke/state.db
 HD_KE_DATA_DIR=/srv/hd_ke
 LOG_LEVEL=INFO  # set to DEBUG to log detailed Help Desk API requests/responses
 THREAD_FILTER_PATTERNS=["^\\s*\\.\\s*$","^\\s*\\r?\\n\\s*$","^\\s*\\.\\s*\\r?\\n\\s*$","^\\s*\\r?\\n\\s*\\r?\\n\\s*$"]
+HELPDESK_CATEGORIES_REFRESH_HOURS=24
+HELPDESK_DEFAULT_CATEGORIES=["wikamp","network","software","mail","ztn","skryba","ekstazjusz","ezd_puw","parking","mzp","kir","teamwww","teta","idcards","violation","usos"]
 ```
 
 `THREAD_FILTER_PATTERNS` accepts a list of regular expressions (JSON, comma- or newline-separated) that causes tickets/updates to be skipped entirely during sync. If the variable is unset we fall back to `\.`, `^\r?\n$`, `^\.\r?\n$`, and `^\r?\n\r?\n$`. The sample `deploy/hd_ke.default` file shows a more permissive configuration (`^\s*\.\s*$`, `^\s*\r?\n\s*$`, `^\s*\.\s*\r?\n\s*$`, `^\s*\r?\n\s*\r?\n\s*$`) so that the filters still trigger when users insert stray spaces around dots or blank lines. Adjust the list to match your data (e.g. `^\s*$`) to avoid discarding valid content.
 
 `EMBEDDING_PROMPT_PREFIX` is prepended to semantic queries (e.g. `query: <your question>`), whereas `EMBEDDING_DOCUMENT_PREFIX` is applied to document chunks during sync (e.g. `passage: <chunk>`). Both are empty by default – set them only if your embedding model requires explicit hints.
+
+`HELPDESK_CATEGORIES_REFRESH_HOURS` controls how often (in hours, minimum one minute between iterations) the service refreshes the Help Desk category dictionary used to expose the `enum` in OpenAPI. `HELPDESK_DEFAULT_CATEGORIES` is the fallback list used whenever the remote dictionary cannot be fetched.
 
 ### Thread content filter
 - The filter applies to both tickets and updates – once a regex matches, the record is no longer chunked, embedded or upserted to Qdrant.
@@ -46,8 +51,8 @@ THREAD_FILTER_PATTERNS=["^\\s*\\.\\s*$","^\\s*\\r?\\n\\s*$","^\\s*\\.\\s*\\r?\\n
 - `GET /api/v1/health` – healthcheck.
 - `GET /api/v1/info` – version, base config, embedding model.
 - `POST /api/v1/sync` – run synchronization (optional filters, `dry_run`).
-- `POST /api/v1/query` – semantic search with filters and citations; by default the response hides `chunk_no`, `chunk_total`, `chunk_start`, `chunk_end`, `sentence_start`, `sentence_end`, `details_hash`, and `url_suffix`, and setting `debug=true` in the body returns the full chunk payload.
-- `POST /api/v1/query/threads` – semantic search returning full threads (ticket + updates) with `user_role` prefixes in text and ticket-level metadata; identically to `/query` it hides chunk metadata and `url_suffix` unless `debug=true` is provided.
+- `POST /api/v1/query` – semantic search with filters and citations; by default the response hides `chunk_no`, `chunk_total`, `chunk_start`, `chunk_end`, `sentence_start`, `sentence_end`, `details_hash`, and `url_suffix`, and only adding `?debug=true` to the URL switches back to the full chunk payload.
+- `POST /api/v1/query/threads` – semantic search returning full threads (ticket + updates) with `user_role` prefixes in text and ticket-level metadata; identically to `/query` it hides chunk metadata and `url_suffix` unless `?debug=true` is provided.
 - `GET /api/v1/tickets/{ticket_id}/details` – rebuild the full ticket `details` using only Qdrant chunks.
 - `GET /api/v1/tickets/{ticket_id}/thread` – return the whole ticket thread (details + chronological updates) via Qdrant-only reconstruction.
 
@@ -160,6 +165,7 @@ WantedBy=timers.target
 After creating the units run `systemctl daemon-reload && systemctl enable --now hd_ke-nightly-sync.timer`.
 
 ## Changelog
+- 0.10.0 – flattened filter fields in `/query` and `/query/threads` (no nested `filters` object), the debug flag moved to the `?debug=true` query parameter, OpenAPI now publishes the live category list (with fallback + refresh cadence configurable via `HELPDESK_CATEGORIES_REFRESH_HOURS` / `HELPDESK_DEFAULT_CATEGORIES`), making the interface more LLM-friendly.
 - 0.9.0 – added a semantic content filter for Help Desk ticket/update details (`TextContentFilter`), tagging non-informative chunks with `semantic_empty` and storing them with zero vectors instead of real embeddings; vector search hides them by default (`hide_semantic_empty` in filters) while keeping them available when reconstructing full threads.
 - 0.8.2 – switched the default `EMBEDDING_DOCUMENT_PREFIX` to an empty string so document chunks stay untouched unless a prefix is explicitly required.
 - 0.8.1 – added `EMBEDDING_DOCUMENT_PREFIX` and document-mode prefixes when embedding sync chunks.

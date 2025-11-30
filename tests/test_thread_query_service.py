@@ -2,7 +2,7 @@ import pytest
 from datetime import datetime
 from types import SimpleNamespace
 
-from app.models.schemas import QueryFilters, QueryRequest
+from app.models.schemas import QueryRequest
 from app.services.thread_query import ThreadQueryService
 
 
@@ -166,9 +166,7 @@ async def test_query_threads_respects_hide_hidden():
     )
     service = ThreadQueryService(DummyEmbeddingClient(), repo, _default_settings())
 
-    response = await service.query_threads(
-        QueryRequest(query="test", limit=1, filters=QueryFilters(hide_hidden=True))
-    )
+    response = await service.query_threads(QueryRequest(query="test", limit=1))
 
     assert len(response.results) == 1
     text = response.results[0].thread_text

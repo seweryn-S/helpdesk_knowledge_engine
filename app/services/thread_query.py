@@ -10,7 +10,7 @@ from qdrant_client import models as qmodels
 from app.clients.embeddings import EmbeddingClient
 from app.clients.qdrant import QdrantRepository
 from app.core.config import Settings
-from app.models.schemas import QueryFilters, QueryRequest, ThreadEntry, ThreadQueryResponse, ThreadSearchResult
+from app.models.schemas import QueryRequest, ThreadEntry, ThreadQueryResponse, ThreadSearchResult
 from app.services.thread import ThreadService
 
 logger = logging.getLogger(__name__)
@@ -32,7 +32,7 @@ class ThreadQueryService:
 
     async def query_threads(self, request: QueryRequest) -> ThreadQueryResponse:
         vector = await self._embed_query(request.query)
-        qfilter = self._build_filter(request.filters)
+        qfilter = self._build_filter(request)
 
         search_limit = min(max(request.limit * self._SEARCH_MULTIPLIER, request.limit), self._SEARCH_LIMIT_MAX)
         ticket_points = self.qdrant_repo.search_tickets(vector=vector, limit=search_limit, query_filter=qfilter)
@@ -46,8 +46,6 @@ class ThreadQueryService:
             return ThreadQueryResponse(query=request.query, results=[])
 
         hide_hidden = True
-        if request.filters:
-            hide_hidden = request.filters.hide_hidden
 
         ticket_payloads = self._fetch_ticket_payloads(ticket_ids)
         update_payloads = self._fetch_update_payloads(ticket_ids, hide_hidden)
@@ -78,65 +76,50 @@ class ThreadQueryService:
         return embeddings[0]
 
     @staticmethod
-    def _build_filter(filters: Optional[QueryFilters]) -> Optional[qmodels.Filter]:
-        if not filters:
-            return None
+    def _build_filter(request: QueryRequest) -> Optional[qmodels.Filter]:
         must: List[qmodels.FieldCondition] = []
 
-        if filters.hide_hidden:
-            must.append(
-                qmodels.FieldCondition(
-                    key="hidden",
-                    match=qmodels.MatchValue(value=False),
-                )
+        # Always skip hidden and semantically empty entries in thread search.
+        must.append(
+            qmodels.FieldCondition(
+                key="hidden",
+                match=qmodels.MatchValue(value=False),
             )
-        if getattr(filters, "hide_semantic_empty", False):
-            must.append(
-                qmodels.FieldCondition(
-                    key="semantic_empty",
-                    match=qmodels.MatchValue(value=False),
-                )
+        )
+        must.append(
+            qmodels.FieldCondition(
+                key="semantic_empty",
+                match=qmodels.MatchValue(value=False),
             )
-        if filters.status:
+        )
+        if request.status:
             must.append(
                 qmodels.FieldCondition(
                     key="status",
-                    match=qmodels.MatchAny(any=filters.status),
+                    match=qmodels.MatchAny(any=request.status),
                 )
             )
-        if filters.category:
+        if request.category:
             must.append(
                 qmodels.FieldCondition(
                     key="category",
-                    match=qmodels.MatchAny(any=filters.category),
+                    match=qmodels.MatchAny(any=request.category),
                 )
             )
-        if filters.tags:
+        if request.tags:
             must.append(
                 qmodels.FieldCondition(
                     key="tags",
-                    match=qmodels.MatchAny(any=filters.tags),
+                    match=qmodels.MatchAny(any=request.tags),
                 )
             )
-        if filters.user_roles:
-            must.append(
-                qmodels.FieldCondition(
-                    key="user_role",
-                    match=qmodels.MatchAny(any=filters.user_roles),
-                )
-            )
-        if filters.update_types:
-            must.append(
-                qmodels.FieldCondition(
-                    key="update_type",
-                    match=qmodels.MatchAny(any=filters.update_types),
-                )
-            )
+        # Filtering by user_role and update_type has been removed from the public request
+        # model to simplify the interface for LLMs.
         time_range: Dict[str, float] = {}
-        if filters.time_from:
-            time_range["gte"] = filters.time_from.timestamp()
-        if filters.time_to:
-            time_range["lte"] = filters.time_to.timestamp()
+        if request.time_from:
+            time_range["gte"] = request.time_from.timestamp()
+        if request.time_to:
+            time_range["lte"] = request.time_to.timestamp()
         if time_range:
             must.append(
                 qmodels.FieldCondition(
@@ -144,8 +127,6 @@ class ThreadQueryService:
                     range=qmodels.Range(**time_range),
                 )
             )
-        if not must:
-            return None
         return qmodels.Filter(must=must)
 
     @staticmethod

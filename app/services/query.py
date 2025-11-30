@@ -1,14 +1,12 @@
 from __future__ import annotations
 
 import logging
-from typing import Optional
-
 from qdrant_client import models as qmodels
 
 from app.clients.embeddings import EmbeddingClient
 from app.clients.qdrant import QdrantRepository
 from app.core.config import Settings
-from app.models.schemas import Passage, QueryFilters, QueryRequest, QueryResponse
+from app.models.schemas import Passage, QueryRequest, QueryResponse
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +27,7 @@ class QueryService:
         if not embeddings:
             raise RuntimeError("Failed to get embedding for query")
         vector = embeddings[0]
-        qfilter = self._build_filter(request.filters)
+        qfilter = self._build_filter(request)
         ticket_points = self.qdrant_repo.search_tickets(vector=vector, limit=request.limit, query_filter=qfilter)
         update_points = self.qdrant_repo.search_updates(vector=vector, limit=request.limit, query_filter=qfilter)
 
@@ -72,65 +70,48 @@ class QueryService:
             )
         return QueryResponse(query=request.query, results=passages)
 
-    def _build_filter(self, filters: Optional[QueryFilters]) -> Optional[qmodels.Filter]:
-        if not filters:
-            return None
+    def _build_filter(self, request: QueryRequest) -> qmodels.Filter:
         must: list[qmodels.FieldCondition] = []
 
-        if filters.hide_hidden:
-            must.append(
-                qmodels.FieldCondition(
-                    key="hidden",
-                    match=qmodels.MatchValue(value=False),
-                )
+        # Always skip hidden and semantically empty entries in search results.
+        must.append(
+            qmodels.FieldCondition(
+                key="hidden",
+                match=qmodels.MatchValue(value=False),
             )
-        if getattr(filters, "hide_semantic_empty", False):
-            must.append(
-                qmodels.FieldCondition(
-                    key="semantic_empty",
-                    match=qmodels.MatchValue(value=False),
-                )
+        )
+        must.append(
+            qmodels.FieldCondition(
+                key="semantic_empty",
+                match=qmodels.MatchValue(value=False),
             )
-        if filters.status:
+        )
+        if request.status:
             must.append(
                 qmodels.FieldCondition(
                     key="status",
-                    match=qmodels.MatchAny(any=filters.status),
+                    match=qmodels.MatchAny(any=request.status),
                 )
             )
-        if filters.category:
+        if request.category:
             must.append(
                 qmodels.FieldCondition(
                     key="category",
-                    match=qmodels.MatchAny(any=filters.category),
+                    match=qmodels.MatchAny(any=request.category),
                 )
             )
-        if filters.tags:
+        if request.tags:
             must.append(
                 qmodels.FieldCondition(
                     key="tags",
-                    match=qmodels.MatchAny(any=filters.tags),
-                )
-            )
-        if filters.user_roles:
-            must.append(
-                qmodels.FieldCondition(
-                    key="user_role",
-                    match=qmodels.MatchAny(any=filters.user_roles),
-                )
-            )
-        if filters.update_types:
-            must.append(
-                qmodels.FieldCondition(
-                    key="update_type",
-                    match=qmodels.MatchAny(any=filters.update_types),
+                    match=qmodels.MatchAny(any=request.tags),
                 )
             )
         time_range = {}
-        if filters.time_from:
-            time_range["gte"] = filters.time_from.timestamp()
-        if filters.time_to:
-            time_range["lte"] = filters.time_to.timestamp()
+        if request.time_from:
+            time_range["gte"] = request.time_from.timestamp()
+        if request.time_to:
+            time_range["lte"] = request.time_to.timestamp()
         if time_range:
             must.append(
                 qmodels.FieldCondition(

@@ -13,13 +13,7 @@ from app.clients.embeddings import EmbeddingClient
 from app.clients.helpdesk import HelpDeskClient
 from app.clients.qdrant import QdrantRepository
 from app.core.config import Settings
-from app.models.schemas import (
-    SyncFilters,
-    SyncRequest,
-    SyncResult,
-    TicketDTO,
-    UpdateDTO,
-)
+from app.models.schemas import SyncRequest, SyncResult, TicketDTO, UpdateDTO
 from app.utils.chunking import TextChunk, chunk_text, merge_texts
 from app.utils.text_content_filter import TextContentFilter
 
@@ -75,17 +69,16 @@ class SyncService:
         self._dummy_vector: Optional[List[float]] = None
 
     async def run(self, state: SyncState, request: SyncRequest) -> SyncResult:
-        filters = request.filters or SyncFilters()
         page_limit = request.page_limit or self.settings.sync_page_size
         chunk_size = self.settings.sync_chunk_size
 
         await state.init()
 
-        ticket_since = filters.time_modified_after or await state.get_checkpoint("tickets")
-        update_since = filters.time_modified_after or await state.get_checkpoint("updates")
+        ticket_since = request.time_modified_after or await state.get_checkpoint("tickets")
+        update_since = request.time_modified_after or await state.get_checkpoint("updates")
 
-        ticket_result = await self._sync_tickets(filters, ticket_since, page_limit, chunk_size, request.dry_run)
-        update_result = await self._sync_updates(filters, update_since, page_limit, chunk_size, request.dry_run)
+        ticket_result = await self._sync_tickets(request, ticket_since, page_limit, chunk_size, request.dry_run)
+        update_result = await self._sync_updates(request, update_since, page_limit, chunk_size, request.dry_run)
 
         if not request.dry_run:
             if ticket_result:
@@ -104,7 +97,7 @@ class SyncService:
 
     async def _sync_tickets(
         self,
-        filters: SyncFilters,
+        request: SyncRequest,
         modified_after: Optional[datetime],
         page_limit: int,
         chunk_size: int,
@@ -117,19 +110,19 @@ class SyncService:
         page = 1
         while True:
             params: Dict[str, Any] = {}
-            time_after = filters.time_modified_after or modified_after
+            time_after = request.time_modified_after or modified_after
             if time_after:
                 params["time_modified_after"] = time_after.isoformat()
-            if filters.time_modified_before:
-                params["time_modified_before"] = filters.time_modified_before.isoformat()
-            if filters.status:
-                params["status"] = filters.status
-            if filters.category:
-                params["category"] = filters.category
-            if filters.tag:
-                params["tag"] = filters.tag
-            if filters.ticket_id:
-                params["ticket_id"] = filters.ticket_id
+            if request.time_modified_before:
+                params["time_modified_before"] = request.time_modified_before.isoformat()
+            if request.status:
+                params["status"] = request.status
+            if request.category:
+                params["category"] = request.category
+            if request.tag:
+                params["tag"] = request.tag
+            if request.ticket_id:
+                params["ticket_id"] = request.ticket_id
 
             pagination = {"page": page, "limit": page_limit}
             data = await self.helpdesk_client.fetch_tickets(params=params, pagination=pagination)
@@ -211,7 +204,7 @@ class SyncService:
 
     async def _sync_updates(
         self,
-        filters: SyncFilters,
+        request: SyncRequest,
         modified_after: Optional[datetime],
         page_limit: int,
         chunk_size: int,
@@ -222,17 +215,17 @@ class SyncService:
         page = 1
         while True:
             params: Dict[str, Any] = {}
-            time_after = filters.time_modified_after or modified_after
+            time_after = request.time_modified_after or modified_after
             if time_after:
                 params["time_modified_after"] = time_after.isoformat()
-            if filters.time_modified_before:
-                params["time_modified_before"] = filters.time_modified_before.isoformat()
-            if filters.update_type:
-                params["type"] = filters.update_type
-            if filters.new_ticket_status:
-                params["new_ticket_status"] = filters.new_ticket_status
-            if filters.ticket_id:
-                params["ticket_id"] = filters.ticket_id
+            if request.time_modified_before:
+                params["time_modified_before"] = request.time_modified_before.isoformat()
+            if request.update_type:
+                params["type"] = request.update_type
+            if request.new_ticket_status:
+                params["new_ticket_status"] = request.new_ticket_status
+            if request.ticket_id:
+                params["ticket_id"] = request.ticket_id
 
             pagination = {"page": page, "limit": page_limit}
             data = await self.helpdesk_client.fetch_updates(params=params, pagination=pagination)

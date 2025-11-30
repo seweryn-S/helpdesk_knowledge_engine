@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import List, Literal, Optional
 
 from pydantic import BaseModel, Field, HttpUrl
+from pydantic.config import ConfigDict
 
 
 # DTOs for Help Desk data
@@ -34,21 +35,56 @@ class UpdateDTO(BaseModel):
 
 
 # API request/response models
-class SyncFilters(BaseModel):
-    time_modified_after: Optional[datetime] = None  # Pobieraj wpisy zmodyfikowane po tej dacie
-    time_modified_before: Optional[datetime] = None  # Ogranicz synchronizację do wpisów przed tą datą
-    status: Optional[List[str]] = None  # Filtruj tickety po statusach
-    category: Optional[List[str]] = None  # Filtruj po kategoriach
-    tag: Optional[List[str]] = None  # Filtruj po tagach
-    ticket_id: Optional[List[int]] = None  # Synchronizuj tylko wskazane ticket ID
-    update_type: Optional[List[str]] = None  # Filtruj aktualizacje po typach
-    new_ticket_status: Optional[List[str]] = None  # Filtruj aktualizacje po docelowym statusie
-
-
 class SyncRequest(BaseModel):
-    filters: Optional[SyncFilters] = None  # Zestaw filtrów dla synchronizacji
-    dry_run: bool = False  # Nie zapisuj do Qdrant gdy True
-    page_limit: int = 100  # Limit rekordów na stronę w Help Desk API
+    time_modified_after: Optional[datetime] = Field(
+        default=None,
+        description="Fetch entries modified on or after this time (ISO 8601).",
+        json_schema_extra={"example": "2024-01-01T00:00:00Z"},
+    )  # Pobieraj wpisy zmodyfikowane po tej dacie
+    time_modified_before: Optional[datetime] = Field(
+        default=None,
+        description="Fetch entries modified on or before this time (ISO 8601).",
+        json_schema_extra={"example": "2024-12-31T23:59:59Z"},
+    )  # Ogranicz synchronizację do wpisów przed tą datą
+    status: Optional[List[str]] = Field(
+        default=None,
+        description="Allowed ticket statuses to sync.",
+        json_schema_extra={"example": ["open", "in-progress"]},
+    )  # Filtruj tickety po statusach
+    category: Optional[List[str]] = Field(
+        default=None,
+        description="Allowed ticket categories to sync.",
+        json_schema_extra={"example": ["network", "software"]},
+    )  # Filtruj po kategoriach
+    tag: Optional[List[str]] = Field(
+        default=None,
+        description="Tags that must be present on tickets or updates.",
+        json_schema_extra={"example": ["vpn", "login"]},
+    )  # Filtruj po tagach
+    ticket_id: Optional[List[int]] = Field(
+        default=None,
+        description="Limit sync to the specified ticket IDs.",
+        json_schema_extra={"example": [12345, 23456]},
+    )  # Synchronizuj tylko wskazane ticket ID
+    update_type: Optional[List[str]] = Field(
+        default=None,
+        description="Update types to sync.",
+        json_schema_extra={"example": ["status_change", "internal_note"]},
+    )  # Filtruj aktualizacje po typach
+    new_ticket_status: Optional[List[str]] = Field(
+        default=None,
+        description="Target ticket statuses after an update.",
+        json_schema_extra={"example": ["resolved", "closed"]},
+    )  # Filtruj aktualizacje po docelowym statusie
+    dry_run: bool = Field(
+        default=False,
+        description="If true, do not write to Qdrant; only report what would be synced.",
+        json_schema_extra={"example": False},
+    )  # Nie zapisuj do Qdrant gdy True
+    page_limit: int = Field(
+        default=100,
+        description="Maximum number of records per page when calling the Help Desk API.",
+    )  # Limit rekordów na stronę w Help Desk API
 
 
 class SyncResult(BaseModel):
@@ -60,23 +96,59 @@ class SyncResult(BaseModel):
     last_update_modified: Optional[datetime] = None  # Najpóźniejsza modyfikacja aktualizacji
 
 
-class QueryFilters(BaseModel):
-    time_from: Optional[datetime] = None  # Filtruj wyniki od tej daty modyfikacji
-    time_to: Optional[datetime] = None  # Filtruj wyniki do tej daty modyfikacji
-    status: Optional[List[str]] = None  # Dozwolone statusy zgłoszeń
-    category: Optional[List[str]] = None  # Dozwolone kategorie
-    tags: Optional[List[str]] = None  # Wymagane tagi
-    user_roles: Optional[List[str]] = None  # Role autorów aktualizacji
-    update_types: Optional[List[str]] = None  # Typy aktualizacji
-    hide_hidden: bool = True  # Domyślnie pomijamy ukryte wpisy
-    hide_semantic_empty: bool = True  # Domyślnie pomijamy semantycznie puste wpisy
-
-
 class QueryRequest(BaseModel):
-    query: str  # Treść zapytania tekstowego
-    limit: int = Field(default=5, ge=1, le=50)  # Maksymalna liczba wyników
-    filters: Optional[QueryFilters] = None  # Opcjonalne filtry wyników
-    debug: bool = False  # Zwracaj pełny payload chunków (domyślnie wyłączone)
+    query: str = Field(
+        ...,
+        description="Natural language query about Help Desk tickets.",
+        json_schema_extra={"example": "How to reset my VPN password?"},
+    )  # Treść zapytania tekstowego
+    limit: int = Field(
+        default=5,
+        ge=1,
+        le=50,
+        description="Maximum number of results to return (1–50).",
+        json_schema_extra={"example": 10},
+    )  # Maksymalna liczba wyników
+    time_from: Optional[datetime] = Field(
+        default=None,
+        description="Include items modified on or after this time (ISO 8601).",
+        json_schema_extra={"example": "2024-01-01T00:00:00Z"},
+    )  # Filtruj wyniki od tej daty modyfikacji
+    time_to: Optional[datetime] = Field(
+        default=None,
+        description="Include items modified on or before this time (ISO 8601).",
+        json_schema_extra={"example": "2024-12-31T23:59:59Z"},
+    )  # Filtruj wyniki do tej daty modyfikacji
+    status: Optional[List[str]] = Field(
+        default=None,
+        description="Allowed ticket statuses.",
+        json_schema_extra={"example": ["open", "in-progress"]},
+    )  # Dozwolone statusy zgłoszeń
+    category: Optional[List[str]] = Field(
+        default=None,
+        description="Allowed ticket categories.",
+        json_schema_extra={"example": ["network", "software"]},
+    )  # Dozwolone kategorie
+    tags: Optional[List[str]] = Field(
+        default=None,
+        description="Required tags that must be present.",
+        json_schema_extra={"example": ["vpn", "login"]},
+    )  # Wymagane tagi
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "query": "Recent tickets about VPN connection problems",
+                    "limit": 10,
+                    "status": ["open", "in-progress"],
+                    "category": ["network"],
+                    "tags": ["vpn", "connection"],
+                    "time_from": "2024-05-01T00:00:00Z",
+                }
+            ]
+        }
+    )
 
 
 class Passage(BaseModel):
