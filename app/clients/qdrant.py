@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import logging
+import time
 
 from qdrant_client import QdrantClient, models as qmodels
-from qdrant_client.http.exceptions import UnexpectedResponse
+from qdrant_client.http.exceptions import ResponseHandlingException, UnexpectedResponse
 
 from app.core.config import Settings
 
@@ -68,10 +69,38 @@ class QdrantRepository:
     def _upsert_points(self, collection_name: str, points: list[qmodels.PointStruct]) -> None:
         if not points:
             return
-        self.client.upsert(
-            collection_name=collection_name,
-            points=points,
-        )
+
+        max_retries = 3
+        backoff_seconds = 1.0
+
+        for attempt in range(1, max_retries + 1):
+            try:
+                self.client.upsert(
+                    collection_name=collection_name,
+                    points=points,
+                )
+                return
+            except ResponseHandlingException as exc:
+                if attempt == max_retries:
+                    logger.error(
+                        "Failed to upsert points to collection '%s' after %s attempts: %s",
+                        collection_name,
+                        max_retries,
+                        exc,
+                    )
+                    raise
+
+                logger.warning(
+                    "Transient error while upserting points to collection '%s' (attempt %s/%s): %s. "
+                    "Retrying in %.1f seconds.",
+                    collection_name,
+                    attempt,
+                    max_retries,
+                    exc,
+                    backoff_seconds,
+                )
+                time.sleep(backoff_seconds)
+                backoff_seconds *= 2
 
     def search_tickets(
         self,
