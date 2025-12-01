@@ -165,6 +165,7 @@ WantedBy=timers.target
 After creating the units run `systemctl daemon-reload && systemctl enable --now hd_ke-nightly-sync.timer`.
 
 ## Changelog
+- 0.10.1 – fix `scripts/nightly_sync.py`: remove missing `SyncFilters` import and pass filters as top-level `SyncRequest` fields to match the API contract.
 - 0.10.0 – flattened filter fields in `/query` and `/query/threads` (no nested `filters` object), the debug flag moved to the `?debug=true` query parameter, OpenAPI now publishes the live category list (with fallback + refresh cadence configurable via `HELPDESK_CATEGORIES_REFRESH_HOURS` / `HELPDESK_DEFAULT_CATEGORIES`), making the interface more LLM-friendly.
 - 0.9.0 – added a semantic content filter for Help Desk ticket/update details (`TextContentFilter`), tagging non-informative chunks with `semantic_empty` and storing them with zero vectors instead of real embeddings; vector search hides them by default (`hide_semantic_empty` in filters) while keeping them available when reconstructing full threads.
 - 0.8.2 – switched the default `EMBEDDING_DOCUMENT_PREFIX` to an empty string so document chunks stay untouched unless a prefix is explicitly required.

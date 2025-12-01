@@ -9,7 +9,7 @@ import sys
 from datetime import datetime
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 import httpx
 from pydantic import ValidationError
@@ -19,7 +19,7 @@ PROJECT_ROOT = SCRIPT_DIR.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from app.models.schemas import SyncFilters, SyncRequest, SyncResult
+from app.models.schemas import SyncRequest, SyncResult
 
 DEFAULT_API_BASE_URL = os.getenv("HD_KE_API_BASE_URL", "http://127.0.0.1:8000")
 DEFAULT_LOG_PATH = os.getenv("HD_KE_SYNC_LOG_FILE", "/var/log/hd_ke/nightly_sync.log")
@@ -122,7 +122,7 @@ def configure_logging(level: str, log_file: str | None) -> None:
     )
 
 
-def build_filters(args: argparse.Namespace) -> Optional[SyncFilters]:
+def build_filter_kwargs(args: argparse.Namespace) -> Dict[str, Any]:
     filter_kwargs: Dict[str, Any] = {}
     if args.time_modified_after:
         filter_kwargs["time_modified_after"] = args.time_modified_after
@@ -141,15 +141,13 @@ def build_filters(args: argparse.Namespace) -> Optional[SyncFilters]:
     if args.new_ticket_status:
         filter_kwargs["new_ticket_status"] = args.new_ticket_status
 
-    if not filter_kwargs:
-        return None
-    return SyncFilters(**filter_kwargs)
+    return filter_kwargs
 
 
 def run_sync(args: argparse.Namespace, api_base_url: str) -> int:
-    filters = build_filters(args)
+    filter_kwargs = build_filter_kwargs(args)
     page_limit = args.page_limit if args.page_limit is not None else SyncRequest().page_limit
-    request_body = SyncRequest(filters=filters, dry_run=args.dry_run, page_limit=page_limit)
+    request_body = SyncRequest(**filter_kwargs, dry_run=args.dry_run, page_limit=page_limit)
     url = f"{api_base_url.rstrip('/')}/api/v1/sync"
     headers: Dict[str, str] = {}
 
@@ -158,7 +156,7 @@ def run_sync(args: argparse.Namespace, api_base_url: str) -> int:
         url,
         args.dry_run,
         page_limit,
-        json.dumps(request_body.model_dump().get("filters") or {}, default=str),
+        json.dumps(filter_kwargs or {}, default=str),
     )
 
     try:
