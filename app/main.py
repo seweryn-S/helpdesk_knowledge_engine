@@ -1,12 +1,17 @@
 from __future__ import annotations
 
 import asyncio
+import copy
 import logging
 from contextlib import asynccontextmanager, suppress
+
 import httpx
 from fastapi import FastAPI
+from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.openapi.utils import get_openapi
+from fastapi.responses import JSONResponse
 
+from app.api.v1.routes_backup import router as backup_router
 from app.api.v1.routes_info import router as info_router
 from app.api.v1.routes_query import router as query_router
 from app.api.v1.routes_sync import router as sync_router
@@ -47,7 +52,7 @@ async def lifespan(app: FastAPI):
 
         def _rebuild_openapi_schema() -> None:
             try:
-                app.openapi_schema = None  # force regeneration with latest data
+                _invalidate_openapi_cache()
                 custom_openapi()
             except Exception as exc:  # noqa: BLE001
                 logger.warning("Failed to rebuild OpenAPI schema: %s", exc)
@@ -96,27 +101,25 @@ app = FastAPI(
     title="hd_ke",
     version=__version__,
     lifespan=lifespan,
-    docs_url="/docs",
-    redoc_url="/redoc",
+    docs_url=None,
+    redoc_url=None,
     openapi_url="/openapi.json",
 )
 
 app.include_router(info_router, prefix="/api/v1")
 app.include_router(sync_router, prefix="/api/v1")
 app.include_router(query_router, prefix="/api/v1")
+app.include_router(backup_router, prefix="/api/v1")
 
 
-def custom_openapi() -> dict:
-    if app.openapi_schema:
-        schema = app.openapi_schema
-    else:
-        schema = get_openapi(
-            title="hd_ke",
-            version=__version__,
-            description="Help Desk knowledge engine (RAG) for Help Desk tickets and updates.",
-            routes=app.routes,
-        )
+_openapi_cache: dict[bool, dict] = {}
 
+
+def _invalidate_openapi_cache() -> None:
+    _openapi_cache.clear()
+
+
+def _inject_categories(schema: dict) -> dict:
     categories = getattr(getattr(app, "state", object()), "helpdesk_categories", None)
     if categories:
         try:
@@ -144,9 +147,64 @@ def custom_openapi() -> dict:
                                 category_prop["description"] = desc.rstrip() + suffix
         except Exception as exc:  # noqa: BLE001
             logger.warning("Failed to inject Help Desk categories into OpenAPI schema: %s", exc)
-
-    app.openapi_schema = schema
     return schema
 
 
+def _filter_admin_paths(schema: dict) -> dict:
+    filtered = copy.deepcopy(schema)
+    paths = filtered.get("paths", {})
+    to_remove: list[str] = []
+    for path, methods in list(paths.items()):
+        if not isinstance(methods, dict):
+            continue
+        for method, details in list(methods.items()):
+            if not isinstance(details, dict):
+                continue
+            tags = details.get("tags") or []
+            if str(path).startswith("/api/v1/admin") or any(
+                str(tag).lower() == "admin" for tag in tags if tag is not None
+            ):
+                methods.pop(method, None)
+        if not methods:
+            to_remove.append(path)
+    for path in to_remove:
+        paths.pop(path, None)
+    return filtered
+
+
+def build_openapi_schema(include_admin: bool = False) -> dict:
+    if include_admin in _openapi_cache:
+        return _openapi_cache[include_admin]
+
+    schema = get_openapi(
+        title="hd_ke",
+        version=__version__,
+        description="Help Desk knowledge engine (RAG) for Help Desk tickets and updates.",
+        routes=app.routes,
+    )
+    schema = _inject_categories(schema)
+    if not include_admin:
+        schema = _filter_admin_paths(schema)
+
+    _openapi_cache[include_admin] = schema
+    return schema
+
+
+def custom_openapi() -> dict:
+    return build_openapi_schema(include_admin=False)
+
+
 app.openapi = custom_openapi
+
+
+@app.get("/openapi-admin.json", include_in_schema=False)
+async def openapi_admin() -> JSONResponse:
+    return JSONResponse(build_openapi_schema(include_admin=True))
+
+
+@app.get("/docs", include_in_schema=False)
+async def swagger_ui() -> JSONResponse:
+    return get_swagger_ui_html(
+        openapi_url="/openapi-admin.json",
+        title="hd_ke docs",
+    )
