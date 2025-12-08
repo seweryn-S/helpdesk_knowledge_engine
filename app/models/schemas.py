@@ -227,6 +227,18 @@ class ThreadEntry(BaseModel):
     text: str  # Treść wpisu
 
 
+class TicketThreadConciseResponse(BaseModel):
+    ticket_id: int  # Ticket identifier
+    topic: Optional[str] = None  # Ticket topic
+    status: Optional[str] = None  # Ticket status
+    tags: List[str] = Field(default_factory=list)  # Tags inherited from ticket
+    url_suffix: Optional[str] = None  # Ticket URL suffix
+    url: Optional[HttpUrl] = None  # Full URL (prefix + suffix)
+    time_created: Optional[datetime] = None  # Ticket creation time
+    time_modified: Optional[datetime] = None  # Latest modification time across the thread
+    thread_text: str  # Full thread text with user_role prefixes
+
+
 class TicketThreadResponse(BaseModel):
     ticket: TicketDetailsResponse  # Szczegóły zgłoszenia
     updates: List[ThreadEntry]  # Lista aktualizacji

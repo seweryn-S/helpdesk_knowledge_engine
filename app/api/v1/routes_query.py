@@ -10,6 +10,7 @@ from app.models.schemas import (
     QueryResponse,
     ThreadQueryResponse,
     TicketDetailsResponse,
+    TicketThreadConciseResponse,
     TicketThreadResponse,
 )
 from app.services.query import QueryService
@@ -104,7 +105,7 @@ async def ticket_details(
 
 @router.get(
     "/tickets/{ticket_id}/thread",
-    response_model=TicketThreadResponse,
+    response_model=TicketThreadResponse | TicketThreadConciseResponse,
     summary="Return full ticket thread (details + updates)",
     description="Fetches ticket chunks and all update chunks for a ticket, rebuilds the original text for each entry, and returns a concatenated thread.",
     tags=["query"],
@@ -113,9 +114,14 @@ async def ticket_details(
 async def ticket_thread(
     ticket_id: int,
     qdrant: QdrantRepository = Depends(get_qdrant),
-) -> TicketThreadResponse:
-    service = ThreadService(qdrant)
+    settings: Settings = Depends(get_settings),
+    concise: bool = Query(
+        False,
+        description="When true, merge metadata into a single thread-level payload and return concatenated thread text.",
+    ),
+) -> TicketThreadResponse | TicketThreadConciseResponse:
+    service = ThreadService(qdrant, ticket_url_prefix=str(settings.helpdesk_ticket_url_prefix))
     try:
-        return service.get_ticket_thread(ticket_id)
+        return service.get_ticket_thread(ticket_id, concise=concise)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

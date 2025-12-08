@@ -54,7 +54,7 @@ HELPDESK_DEFAULT_CATEGORIES=["wikamp","network","software","mail","ztn","skryba"
 - `POST /api/v1/query` – semantic search with filters and citations; by default the response hides `chunk_no`, `chunk_total`, `chunk_start`, `chunk_end`, `sentence_start`, `sentence_end`, `details_hash`, and `url_suffix`, and only adding `?debug=true` to the URL switches back to the full chunk payload.
 - `POST /api/v1/query/threads` – semantic search returning full threads (ticket + updates) with `user_role` prefixes in text and ticket-level metadata; identically to `/query` it hides chunk metadata and `url_suffix` unless `?debug=true` is provided.
 - `GET /api/v1/tickets/{ticket_id}/details` – rebuild the full ticket `details` using only Qdrant chunks.
-- `GET /api/v1/tickets/{ticket_id}/thread` – return the whole ticket thread (details + chronological updates) via Qdrant-only reconstruction.
+- `GET /api/v1/tickets/{ticket_id}/thread` – return the whole ticket thread (details + chronological updates) via Qdrant-only reconstruction; `?concise=true` returns merged thread metadata and a single `thread_text` instead of per-entry chunks.
 
 ## Reconstructing content from Qdrant only
 - Each chunk stores a single fragment (`detail_chunk`) together with positional metadata; there is no duplicate `text`/`full_text` payload.
@@ -165,6 +165,7 @@ WantedBy=timers.target
 After creating the units run `systemctl daemon-reload && systemctl enable --now hd_ke-nightly-sync.timer`.
 
 ## Changelog
+- 0.11.0 – `/tickets/{ticket_id}/thread` now supports `concise=true`, merging thread-level metadata and returning a single `thread_text` (aligned with `/query/threads`) to save LLM context.
 - 0.10.1 – fix `scripts/nightly_sync.py`: remove missing `SyncFilters` import and pass filters as top-level `SyncRequest` fields to match the API contract.
 - 0.10.0 – flattened filter fields in `/query` and `/query/threads` (no nested `filters` object), the debug flag moved to the `?debug=true` query parameter, OpenAPI now publishes the live category list (with fallback + refresh cadence configurable via `HELPDESK_CATEGORIES_REFRESH_HOURS` / `HELPDESK_DEFAULT_CATEGORIES`), making the interface more LLM-friendly.
 - 0.9.0 – added a semantic content filter for Help Desk ticket/update details (`TextContentFilter`), tagging non-informative chunks with `semantic_empty` and storing them with zero vectors instead of real embeddings; vector search hides them by default (`hide_semantic_empty` in filters) while keeping them available when reconstructing full threads.

@@ -7,12 +7,19 @@ from typing import Any, Dict, Iterable, List, Sequence
 from qdrant_client import models as qmodels
 
 from app.clients.qdrant import QdrantRepository
-from app.models.schemas import ChunkMetadata, ThreadEntry, TicketDetailsResponse, TicketThreadResponse
+from app.models.schemas import (
+    ChunkMetadata,
+    ThreadEntry,
+    TicketDetailsResponse,
+    TicketThreadConciseResponse,
+    TicketThreadResponse,
+)
 
 
 class ThreadService:
-    def __init__(self, qdrant_repo: QdrantRepository):
+    def __init__(self, qdrant_repo: QdrantRepository | None, ticket_url_prefix: str | None = None):
         self.qdrant_repo = qdrant_repo
+        self.ticket_url_prefix = ticket_url_prefix
 
     def get_ticket_details(self, ticket_id: int) -> TicketDetailsResponse:
         ticket_payloads = self._fetch_payloads(ticket_id, source="ticket")
@@ -20,7 +27,7 @@ class ThreadService:
             raise ValueError(f"Ticket {ticket_id} not found in Qdrant")
         return self._build_ticket_details(ticket_id, ticket_payloads)
 
-    def get_ticket_thread(self, ticket_id: int) -> TicketThreadResponse:
+    def get_ticket_thread(self, ticket_id: int, concise: bool = False) -> TicketThreadResponse | TicketThreadConciseResponse:
         ticket_payloads = self._fetch_payloads(ticket_id, source="ticket")
         if not ticket_payloads:
             raise ValueError(f"Ticket {ticket_id} not found in Qdrant")
@@ -28,9 +35,13 @@ class ThreadService:
         update_payloads = self._fetch_payloads(ticket_id, source="update")
         updates = self._build_update_entries(ticket_id, update_payloads)
         thread_text = self._compose_thread_text(ticket_details.details, updates)
+        if concise:
+            return self._build_concise_thread(ticket_id, ticket_payloads, update_payloads, thread_text)
         return TicketThreadResponse(ticket=ticket_details, updates=updates, thread_text=thread_text)
 
     def _fetch_payloads(self, ticket_id: int, source: str) -> List[Dict[str, Any]]:
+        if self.qdrant_repo is None:
+            raise RuntimeError("Qdrant repository is not configured")
         qfilter = qmodels.Filter(
             must=[
                 qmodels.FieldCondition(key="ticket_id", match=qmodels.MatchValue(value=ticket_id)),
@@ -92,6 +103,39 @@ class ThreadService:
         entries.sort(key=lambda entry: entry.time_created or datetime.min)
         return entries
 
+    def _build_concise_thread(
+        self,
+        ticket_id: int,
+        ticket_payloads: List[Dict[str, Any]],
+        update_payloads: List[Dict[str, Any]],
+        thread_text: str,
+    ) -> TicketThreadConciseResponse:
+        chunks = self._sort_chunks(ticket_payloads)
+        if not chunks:
+            raise ValueError(f"Ticket {ticket_id} has no chunks in Qdrant")
+        exemplar = chunks[0]
+        topic = exemplar.get("topic")
+        status = exemplar.get("status")
+        tags = exemplar.get("tags") or []
+        url_suffix = exemplar.get("url_suffix")
+        ticket_time_created = self._parse_datetime(exemplar.get("time_created"))
+        ticket_time_modified = self._parse_datetime(exemplar.get("time_modified"))
+        last_update_time = self._latest_update_time(update_payloads)
+        time_modified = self._calculate_time_modified(ticket_time_modified, ticket_time_created, last_update_time)
+        full_url = f"{self.ticket_url_prefix}{url_suffix}" if self.ticket_url_prefix and url_suffix else None
+
+        return TicketThreadConciseResponse(
+            ticket_id=ticket_id,
+            topic=topic,
+            status=status,
+            tags=list(tags) if isinstance(tags, list) else [],
+            url_suffix=url_suffix,
+            url=full_url,
+            time_created=ticket_time_created,
+            time_modified=time_modified,
+            thread_text=thread_text,
+        )
+
     @staticmethod
     def _sort_chunks(payloads: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
         return sorted(
@@ -132,6 +176,27 @@ class ThreadService:
             header = " | ".join(header_parts) if header_parts else "update"
             parts.append(f"\n\n[{header}]\n{entry.text}")
         return "".join(parts)
+
+    @staticmethod
+    def _latest_update_time(payloads: Iterable[Dict[str, Any]]) -> datetime | None:
+        latest: datetime | None = None
+        for payload in payloads:
+            for field_name in ("time_modified", "time_created"):
+                candidate = ThreadService._parse_datetime(payload.get(field_name))
+                if candidate and (latest is None or candidate > latest):
+                    latest = candidate
+        return latest
+
+    @staticmethod
+    def _calculate_time_modified(
+        ticket_time_modified: datetime | None,
+        ticket_time_created: datetime | None,
+        last_update_time: datetime | None,
+    ) -> datetime | None:
+        candidates = [dt for dt in (ticket_time_modified, last_update_time, ticket_time_created) if dt]
+        if not candidates:
+            return None
+        return max(candidates)
 
     @staticmethod
     def _parse_datetime(value: Any) -> datetime | None:
