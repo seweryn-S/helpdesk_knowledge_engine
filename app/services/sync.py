@@ -4,7 +4,7 @@ import hashlib
 import logging
 import re
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Pattern, Sequence
+from typing import Any, Dict, Iterable, List, Optional, Pattern, Sequence
 from uuid import UUID, uuid5
 
 import aiosqlite
@@ -52,6 +52,7 @@ class SyncState:
 
 class SyncService:
     _POINT_ID_NAMESPACE = UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
+    _UPDATE_TICKET_ID_BATCH_SIZE = 200
 
     def __init__(
         self,
@@ -69,6 +70,12 @@ class SyncService:
         self._dummy_vector: Optional[List[float]] = None
 
     async def run(self, state: SyncState, request: SyncRequest) -> SyncResult:
+        self._ticket_count = 0
+        self._update_count = 0
+        self._points_upserted = 0
+        self._points_hidden = 0
+        self._processed_ticket_ids: set[int] = set()
+
         page_limit = request.page_limit or self.settings.sync_page_size
         chunk_size = self.settings.sync_chunk_size
 
@@ -78,7 +85,15 @@ class SyncService:
         update_since = request.time_modified_after or await state.get_checkpoint("updates")
 
         ticket_result = await self._sync_tickets(request, ticket_since, page_limit, chunk_size, request.dry_run)
-        update_result = await self._sync_updates(request, update_since, page_limit, chunk_size, request.dry_run)
+        allowed_ticket_ids = sorted(self._processed_ticket_ids)
+        update_result = await self._sync_updates(
+            request,
+            update_since,
+            allowed_ticket_ids=allowed_ticket_ids,
+            page_limit=page_limit,
+            chunk_size=chunk_size,
+            dry_run=request.dry_run,
+        )
 
         if not request.dry_run:
             if ticket_result:
@@ -103,9 +118,6 @@ class SyncService:
         chunk_size: int,
         dry_run: bool,
     ) -> Optional[datetime]:
-        self._ticket_count = 0
-        self._points_upserted = 0
-        self._points_hidden = 0
         last_modified: Optional[datetime] = modified_after
         page = 1
         while True:
@@ -121,8 +133,6 @@ class SyncService:
                 params["category"] = request.category
             if request.tag:
                 params["tag"] = request.tag
-            if request.ticket_id:
-                params["ticket_id"] = request.ticket_id
 
             pagination = {"page": page, "limit": page_limit}
             data = await self.helpdesk_client.fetch_tickets(params=params, pagination=pagination)
@@ -130,68 +140,10 @@ class SyncService:
             if not tickets_raw:
                 break
             tickets = [TicketDTO.model_validate(t) for t in tickets_raw]
-            points = []
-            texts: List[str] = []
-            metas_with_vector: List[Dict[str, Any]] = []
-            metas_without_vector: List[Dict[str, Any]] = []
-            for ticket in tickets:
-                if self._should_skip_details(ticket.details):
-                    logger.info("Skipping ticket %s due to thread filter match", ticket.id)
-                    continue
-                self._ticket_count += 1
-                is_semantic = self._text_content_filter.is_semantic(ticket.details)
-                chunks = chunk_text(ticket.details, chunk_size)
-                details_hash = self._hash_text(ticket.details)
-                for idx, chunk in enumerate(chunks):
-                    chunk_body = chunk.text.strip()
-                    text = merge_texts([ticket.topic, chunk_body])
-                    payload = self._build_ticket_payload(
-                        ticket,
-                        chunk,
-                        idx,
-                        len(chunks),
-                        details_hash,
-                    )
-                    payload["semantic_empty"] = not is_semantic
-                    if is_semantic:
-                        texts.append(text)
-                        metas_with_vector.append(payload)
-                    else:
-                        metas_without_vector.append(payload)
-            if not dry_run:
-                if texts:
-                    embeddings = await self.embedding_client.embed_texts(texts, mode="document")
-                    for payload, vector in zip(metas_with_vector, embeddings):
-                        payload_copy = dict(payload)
-                        raw_id = payload_copy.get("id")
-                        point_id = self._make_point_id(str(raw_id)) if raw_id is not None else None
-                        if raw_id is not None:
-                            payload_copy["logical_id"] = raw_id  # logiczne ID chunku używane wyłącznie w payloadzie
-                            payload_copy.pop("id", None)
-                        points.append(
-                            qmodels.PointStruct(
-                                id=point_id,
-                                payload=payload_copy,
-                                vector=vector,
-                            )
-                        )
-                for payload in metas_without_vector:
-                    payload_copy = dict(payload)
-                    raw_id = payload_copy.get("id")
-                    point_id = self._make_point_id(str(raw_id)) if raw_id is not None else None
-                    if raw_id is not None:
-                        payload_copy["logical_id"] = raw_id  # logiczne ID chunku używane wyłącznie w payloadzie
-                        payload_copy.pop("id", None)
-                    points.append(
-                        qmodels.PointStruct(
-                            id=point_id,
-                            payload=payload_copy,
-                            vector=self._get_dummy_vector(),
-                        )
-                    )
-                if points:
-                    self.qdrant_repo.upsert_ticket_points(points)
-                    self._points_upserted += len(points)
+            if request.ticket_id:
+                allowed_ids = set(request.ticket_id)
+                tickets = [t for t in tickets if t.id in allowed_ids]
+            await self._upsert_ticket_batch(tickets, chunk_size=chunk_size, dry_run=dry_run)
             if tickets:
                 max_mod = max(t.time_modified for t in tickets)
                 last_modified = max_mod if (not last_modified or max_mod > last_modified) else last_modified
@@ -206,113 +158,211 @@ class SyncService:
         self,
         request: SyncRequest,
         modified_after: Optional[datetime],
+        allowed_ticket_ids: Sequence[int],
         page_limit: int,
         chunk_size: int,
         dry_run: bool,
     ) -> Optional[datetime]:
-        self._update_count = 0
-        last_modified: Optional[datetime] = modified_after
-        page = 1
-        while True:
-            params: Dict[str, Any] = {}
-            time_after = request.time_modified_after or modified_after
-            if time_after:
-                params["time_modified_after"] = time_after.isoformat()
-            if request.time_modified_before:
-                params["time_modified_before"] = request.time_modified_before.isoformat()
-            if request.update_type:
-                params["type"] = request.update_type
-            if request.new_ticket_status:
-                params["new_ticket_status"] = request.new_ticket_status
-            if request.ticket_id:
-                params["ticket_id"] = request.ticket_id
+        if not allowed_ticket_ids:
+            return modified_after
 
-            pagination = {"page": page, "limit": page_limit}
-            data = await self.helpdesk_client.fetch_updates(params=params, pagination=pagination)
-            updates_raw = data.get("data") or []
-            if not updates_raw:
-                break
-            updates = [UpdateDTO.model_validate(u) for u in updates_raw]
-            points = []
-            texts: List[str] = []
-            metas_with_vector: List[Dict[str, Any]] = []
-            metas_without_vector: List[Dict[str, Any]] = []
-            for update in updates:
-                if self._should_skip_details(update.details):
-                    logger.info(
-                        "Skipping update %s (ticket %s) due to thread filter match",
-                        update.id,
-                        update.ticket_id,
-                    )
-                    continue
-                self._update_count += 1
-                is_semantic = self._text_content_filter.is_semantic(update.details)
-                chunks = chunk_text(update.details, chunk_size)
-                details_hash = self._hash_text(update.details)
-                for idx, chunk in enumerate(chunks):
-                    chunk_body = chunk.text.strip()
-                    text = chunk_body
-                    payload = self._build_update_payload(
-                        update,
-                        chunk,
-                        idx,
-                        len(chunks),
-                        details_hash,
-                    )
-                    payload["semantic_empty"] = not is_semantic
-                    if is_semantic:
-                        texts.append(text)
-                        metas_with_vector.append(payload)
-                    else:
-                        metas_without_vector.append(payload)
-                    if update.hidden:
-                        self._points_hidden += 1
-            if not dry_run:
-                if texts:
-                    embeddings = await self.embedding_client.embed_texts(texts, mode="document")
-                    for payload, vector in zip(metas_with_vector, embeddings):
-                        payload_copy = dict(payload)
-                        raw_id = payload_copy.get("id")
-                        point_id = self._make_point_id(str(raw_id)) if raw_id is not None else None
-                        if raw_id is not None:
-                            payload_copy["logical_id"] = raw_id  # logiczne ID chunku używane wyłącznie w payloadzie
-                            payload_copy.pop("id", None)
-                        points.append(
-                            qmodels.PointStruct(
-                                id=point_id,
-                                payload=payload_copy,
-                                vector=vector,
-                            )
-                        )
-                for payload in metas_without_vector:
-                    payload_copy = dict(payload)
-                    raw_id = payload_copy.get("id")
-                    point_id = self._make_point_id(str(raw_id)) if raw_id is not None else None
-                    if raw_id is not None:
-                        payload_copy["logical_id"] = raw_id  # logiczne ID chunku używane wyłącznie w payloadzie
-                        payload_copy.pop("id", None)
-                    points.append(
-                        qmodels.PointStruct(
-                            id=point_id,
-                            payload=payload_copy,
-                            vector=self._get_dummy_vector(),
-                        )
-                    )
-                if points:
-                    self.qdrant_repo.upsert_update_points(points)
-                    self._points_upserted += len(points)
-            if updates:
-                max_mod = max(u.time_modified for u in updates)
-                last_modified = max_mod if (not last_modified or max_mod > last_modified) else last_modified
-            pagination_info = data.get("pagination") or {}
-            next_page = pagination_info.get("next_page")
-            if not next_page:
-                break
-            page = next_page
+        last_modified: Optional[datetime] = modified_after
+        ticket_batches = [
+            allowed_ticket_ids[i : i + self._UPDATE_TICKET_ID_BATCH_SIZE]
+            for i in range(0, len(allowed_ticket_ids), self._UPDATE_TICKET_ID_BATCH_SIZE)
+        ]
+
+        for batch in ticket_batches:
+            page = 1
+            while True:
+                params: Dict[str, Any] = {"ticket_id": list(batch)}
+                time_after = request.time_modified_after or modified_after
+                if time_after:
+                    params["time_modified_after"] = time_after.isoformat()
+                if request.time_modified_before:
+                    params["time_modified_before"] = request.time_modified_before.isoformat()
+                if request.update_type:
+                    params["type"] = request.update_type
+                if request.new_ticket_status:
+                    params["new_ticket_status"] = request.new_ticket_status
+
+                pagination = {"page": page, "limit": page_limit}
+                data = await self.helpdesk_client.fetch_updates(params=params, pagination=pagination)
+                updates_raw = data.get("data") or []
+                if not updates_raw:
+                    break
+                updates = [UpdateDTO.model_validate(u) for u in updates_raw]
+
+                page_max_mod = max(u.time_modified for u in updates)
+                last_modified = page_max_mod if (not last_modified or page_max_mod > last_modified) else last_modified
+
+                await self._upsert_update_batch(updates, chunk_size=chunk_size, dry_run=dry_run)
+
+                pagination_info = data.get("pagination") or {}
+                next_page = pagination_info.get("next_page")
+                if not next_page:
+                    break
+                page = next_page
+
         return last_modified
 
     def _make_point_id(self, key: str) -> str:
         return str(uuid5(self._POINT_ID_NAMESPACE, key))
+
+    async def _upsert_ticket_batch(
+        self,
+        tickets: Iterable[TicketDTO],
+        chunk_size: int,
+        dry_run: bool,
+    ) -> None:
+        points: List[qmodels.PointStruct] = []
+        texts: List[str] = []
+        metas_with_vector: List[Dict[str, Any]] = []
+        metas_without_vector: List[Dict[str, Any]] = []
+
+        for ticket in tickets:
+            if ticket.id in self._processed_ticket_ids:
+                continue
+            if self._should_skip_details(ticket.details):
+                logger.info("Skipping ticket %s due to thread filter match", ticket.id)
+                continue
+            self._processed_ticket_ids.add(ticket.id)
+            self._ticket_count += 1
+            is_semantic = self._text_content_filter.is_semantic(ticket.details)
+            chunks = chunk_text(ticket.details, chunk_size)
+            details_hash = self._hash_text(ticket.details)
+            for idx, chunk in enumerate(chunks):
+                chunk_body = chunk.text.strip()
+                text = merge_texts([ticket.topic, chunk_body])
+                payload = self._build_ticket_payload(
+                    ticket,
+                    chunk,
+                    idx,
+                    len(chunks),
+                    details_hash,
+                )
+                payload["semantic_empty"] = not is_semantic
+                if is_semantic:
+                    texts.append(text)
+                    metas_with_vector.append(payload)
+                else:
+                    metas_without_vector.append(payload)
+
+        if dry_run:
+            return
+
+        if texts:
+            embeddings = await self.embedding_client.embed_texts(texts, mode="document")
+            for payload, vector in zip(metas_with_vector, embeddings):
+                payload_copy = dict(payload)
+                raw_id = payload_copy.get("id")
+                point_id = self._make_point_id(str(raw_id)) if raw_id is not None else None
+                if raw_id is not None:
+                    payload_copy["logical_id"] = raw_id  # logiczne ID chunku używane wyłącznie w payloadzie
+                    payload_copy.pop("id", None)
+                points.append(
+                    qmodels.PointStruct(
+                        id=point_id,
+                        payload=payload_copy,
+                        vector=vector,
+                    )
+                )
+        for payload in metas_without_vector:
+            payload_copy = dict(payload)
+            raw_id = payload_copy.get("id")
+            point_id = self._make_point_id(str(raw_id)) if raw_id is not None else None
+            if raw_id is not None:
+                payload_copy["logical_id"] = raw_id  # logiczne ID chunku używane wyłącznie w payloadzie
+                payload_copy.pop("id", None)
+            points.append(
+                qmodels.PointStruct(
+                    id=point_id,
+                    payload=payload_copy,
+                    vector=self._get_dummy_vector(),
+                )
+            )
+        if points:
+            self.qdrant_repo.upsert_ticket_points(points)
+            self._points_upserted += len(points)
+
+    async def _upsert_update_batch(
+        self,
+        updates: Iterable[UpdateDTO],
+        chunk_size: int,
+        dry_run: bool,
+    ) -> None:
+        points: List[qmodels.PointStruct] = []
+        texts: List[str] = []
+        metas_with_vector: List[Dict[str, Any]] = []
+        metas_without_vector: List[Dict[str, Any]] = []
+
+        for update in updates:
+            if self._should_skip_details(update.details):
+                logger.info(
+                    "Skipping update %s (ticket %s) due to thread filter match",
+                    update.id,
+                    update.ticket_id,
+                )
+                continue
+            self._update_count += 1
+            is_semantic = self._text_content_filter.is_semantic(update.details)
+            chunks = chunk_text(update.details, chunk_size)
+            details_hash = self._hash_text(update.details)
+            for idx, chunk in enumerate(chunks):
+                chunk_body = chunk.text.strip()
+                text = chunk_body
+                payload = self._build_update_payload(
+                    update,
+                    chunk,
+                    idx,
+                    len(chunks),
+                    details_hash,
+                )
+                payload["semantic_empty"] = not is_semantic
+                if is_semantic:
+                    texts.append(text)
+                    metas_with_vector.append(payload)
+                else:
+                    metas_without_vector.append(payload)
+                if update.hidden:
+                    self._points_hidden += 1
+
+        if dry_run:
+            return
+
+        if texts:
+            embeddings = await self.embedding_client.embed_texts(texts, mode="document")
+            for payload, vector in zip(metas_with_vector, embeddings):
+                payload_copy = dict(payload)
+                raw_id = payload_copy.get("id")
+                point_id = self._make_point_id(str(raw_id)) if raw_id is not None else None
+                if raw_id is not None:
+                    payload_copy["logical_id"] = raw_id  # logiczne ID chunku używane wyłącznie w payloadzie
+                    payload_copy.pop("id", None)
+                points.append(
+                    qmodels.PointStruct(
+                        id=point_id,
+                        payload=payload_copy,
+                        vector=vector,
+                    )
+                )
+        for payload in metas_without_vector:
+            payload_copy = dict(payload)
+            raw_id = payload_copy.get("id")
+            point_id = self._make_point_id(str(raw_id)) if raw_id is not None else None
+            if raw_id is not None:
+                payload_copy["logical_id"] = raw_id  # logiczne ID chunku używane wyłącznie w payloadzie
+                payload_copy.pop("id", None)
+            points.append(
+                qmodels.PointStruct(
+                    id=point_id,
+                    payload=payload_copy,
+                    vector=self._get_dummy_vector(),
+                )
+            )
+        if points:
+            self.qdrant_repo.upsert_update_points(points)
+            self._points_upserted += len(points)
 
     def _build_ticket_payload(
         self,
