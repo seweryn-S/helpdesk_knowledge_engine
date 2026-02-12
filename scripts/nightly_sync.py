@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Seweryn Sitarski <seweryn.sitarski@gmail.com>
+# SPDX-License-Identifier: GPL-3.0-or-later
+
 from __future__ import annotations
 
 import argparse

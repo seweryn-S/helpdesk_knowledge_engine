@@ -1,3 +1,6 @@
+# Copyright (C) 2026 Seweryn Sitarski <seweryn.sitarski@gmail.com>
+# SPDX-License-Identifier: GPL-3.0-or-later
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
 
