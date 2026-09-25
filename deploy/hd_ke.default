@@ -7,14 +7,15 @@ QDRANT_USE_TLS=false
 HELPDESK_API_BASE_URL=https://edu.p.lodz.pl/webservice/restful/server.php
 HELPDESK_API_KEY=CHANGEME
 HELPDESK_TICKET_URL_PREFIX=https://edu.p.lodz.pl/blocks/helpdesk/view.php?
-EMBEDDING_API_BASE_URL=http://172.22.1.5:8000/v1
+# --- Embedding: PolDense-1B (vLLM na 172.22.1.5:8006) ---
+EMBEDDING_API_BASE_URL=http://172.22.1.5:8006/v1
 EMBEDDING_API_KEY=
-EMBEDDING_MODEL_NAME=sdadas/mmlw-retrieval-roberta-large-v2
+EMBEDDING_MODEL_NAME=OPI-PIB/PolDense-1B
 EMBEDDING_CONTEXT_LENGTH=512
-# leave blank to auto-detect via embedding API:
-EMBEDDING_DIM=
-EMBEDDING_PROMPT_PREFIX="query: "
+EMBEDDING_DIM=1792
+EMBEDDING_PROMPT_PREFIX="[query]: "
 EMBEDDING_DOCUMENT_PREFIX=
+# --- Kolekcje: po re-embedzie zmienić na _v2, np. hd_ticket_chunks_v2 ---
 SYNC_CHECKPOINT_PATH=/var/lib/hd_ke/state.db
 HD_KE_DATA_DIR=/srv/hd_ke
 LOG_LEVEL=INFO

@@ -165,7 +165,115 @@ WantedBy=timers.target
 ```
 Po utworzeniu jednostek wykonaj `systemctl daemon-reload && systemctl enable --now hd_ke-nightly-sync.timer`.
 
+## Migracja modelu embeddingowego (re-embed)
+
+Skrypt `scripts/reembed.py` pozwala przebudować wszystkie wektory w Qdrant na nowym modelu embeddingowym **bez żadnego kontaktu z systemem Help Desk**. Teksty odtwarzane są z payloadów istniejących kolekcji, embedowane nowym modelem i zapisywane do nowych kolekcji. Stare kolekcje pozostają nietknięte do momentu switchoveru.
+
+### Przygotowanie środowiska
+
+Skrypt wymaga `httpx` i `qdrant-client`. Zalecane jest użycie odseparowanego venv:
+
+```bash
+cd /path/to/helpdesk_knowledge_engine
+python3 -m venv .venv_reembed
+.venv_reembed/bin/pip install httpx qdrant-client
+```
+
+### Konfiguracja
+
+Skrypt ładuje konfigurację w kolejności:
+1. Zmienne środowiskowe (shell)
+2. Plik `/etc/default/hd_ke`
+3. Plik `deploy/hd_ke.default` (w katalogu projektu)
+
+Wystarczy, że plik konfiguracyjny zawiera poprawne wartości:
+- `QDRANT_HOST`, `QDRANT_PORT` – adres serwera Qdrant
+- `EMBEDDING_API_BASE_URL` – endpoint nowego modelu (np. `http://172.22.1.5:8006/v1`)
+- `EMBEDDING_MODEL_NAME` – nazwa modelu (np. `OPI-PIB/PolDense-1B`)
+- `EMBEDDING_PROMPT_PREFIX` – prefiks dla zapytań (np. `[query]: `)
+- `EMBEDDING_DOCUMENT_PREFIX` – prefiks dla dokumentów (pusty, jeśli nie wymagany)
+
+### Kroki migracji
+
+```bash
+# 0. Backup przed migracją (przez API hd_ke, port 7005):
+curl -o /srv/ai/hd_ke_data/backup_pre_migration.tgz \
+  http://127.0.0.1:7005/api/v1/admin/backup/export
+
+# 1. Dry run – sprawdzenie liczb i walidacja (nic nie zapisuje):
+.venv_reembed/bin/python scripts/reembed.py --dry-run
+
+# 2. Pełny re-embed (w dowolnej porze – nie obciąża Help Desk):
+.venv_reembed/bin/python scripts/reembed.py --batch-size 32 \
+  2>&1 | tee /var/log/hd_ke/reembed.log
+
+# 3. Weryfikacja – liczbę punktów w nowych kolekcjach:
+curl -s http://QDRANT_HOST:6333/collections/hd_ticket_chunks_v2 | python3 -m json.tool | grep points_count
+curl -s http://QDRANT_HOST:6333/collections/hd_update_chunks_v2 | python3 -m json.tool | grep points_count
+
+# 4. Switchover – zmiana nazw kolekcji w /etc/default/hd_ke:
+#    QDRANT_TICKET_COLLECTION=hd_ticket_chunks_v2
+#    QDRANT_UPDATE_COLLECTION=hd_update_chunks_v2
+systemctl restart hd_ke
+
+# 5. Test zapytania:
+curl -s -X POST http://127.0.0.1:7005/api/v1/query \
+  -H 'Content-Type: application/json' \
+  -d '{"query": "problem z logowaniem"}' | python3 -m json.tool | head -30
+
+# 6. (Opcjonalnie, po 1–2 tyg. stabilnej pracy) usunięcie starych kolekcji:
+curl -X DELETE http://QDRANT_HOST:6333/collections/hd_ticket_chunks
+curl -X DELETE http://QDRANT_HOST:6333/collections/hd_update_chunks
+```
+
+### Opcje skryptu
+
+| Opcja | Opis |
+|-------|------|
+| `--batch-size N` | Liczba tekstów na jedno wywołanie API embedding (domyślnie 32) |
+| `--dry-run` | Tylko zliczenie, bez pisania do Qdrant |
+| `--resume` | Wznów od ostatniego checkpointu (po Ctrl+C lub awarii) |
+| `--reset` | Wyczyść checkpointy i zacznij od nowa |
+| `--ticket-only` | Tylko kolekcja ticketów |
+| `--update-only` | Tylko kolekcja update'ów |
+| `--target-suffix S` | Sufiks nazw nowych kolekcji (domyślnie `_v2`) |
+| `--source-ticket NAME` | Nadpisz nazwę źródłowej kolekcji ticketów |
+| `--source-update NAME` | Nadpisz nazwę źródłowej kolekcji update'ów |
+| `--checkpoint-db PATH` | Ścieżka do SQLite z checkpointami (domyślnie `/var/lib/hd_ke/reembed_state.db`) |
+| `--log-level LEVEL` | Poziom logowania (DEBUG, INFO, WARNING) |
+
+### Wznawianie po przerwie
+
+Jeśli skrypt zostanie przerwany (Ctrl+C, wyłączenie serwera, błąd sieci):
+```bash
+.venv_reembed/bin/python scripts/reembed.py --resume
+```
+Wznawia od ostatniego zapisanego checkpointu. Postęp jest zapisywany co batch do SQLite.
+
+### Przykład: migracja na PolDense-1B
+
+Konfiguracja w `/etc/default/hd_ke`:
+```
+EMBEDDING_API_BASE_URL=http://172.22.1.5:8006/v1
+EMBEDDING_MODEL_NAME=OPI-PIB/PolDense-1B
+EMBEDDING_DIM=1792
+EMBEDDING_PROMPT_PREFIX="[query]: "
+EMBEDDING_DOCUMENT_PREFIX=
+```
+
+Uruchomienie:
+```bash
+.venv_reembed/bin/python scripts/reembed.py --batch-size 32
+```
+
+Po zakończeniu w `/etc/default/hd_ke`:
+```
+QDRANT_TICKET_COLLECTION=hd_ticket_chunks_v2
+QDRANT_UPDATE_COLLECTION=hd_update_chunks_v2
+```
+
 ## Changelog
+- 0.12.0 – nowy skrypt `scripts/reembed.py`: przebudowa wszystkich wektorów w Qdrant na nowym modelu embeddingowym bez kontaktu z Help Desk (teksty odtwarzane z payloadów). Wsparcie: dry-run, resume (checkpoint w SQLite), batch processing, retry z backoffem, progress bar. Samodzielny (wymaga tylko `httpx` + `qdrant-client`), ładuje config z `/etc/default/hd_ke`. Migracja na `OPI-PIB/PolDense-1B` (dim=1792, prefix `[query]: `).
 - 0.11.0 – `/tickets/{ticket_id}/thread` obsługuje `concise=true`, scalając metadane wątku i zwracając pojedynczy `thread_text` (jak `/query/threads`), co skraca odpowiedź dla LLM.
 - 0.10.1 – naprawa `scripts/nightly_sync.py`: usunięty import nieistniejącego `SyncFilters`, filtry przekazywane jako płaskie pola `SyncRequest` zgodnie z kontraktem API.
 - 0.10.0 – płaskie pola filtrów w `/query` i `/query/threads` (bez zagnieżdżonego `filters`), ukryty parametr `?debug=true`, dynamiczne OpenAPI z aktualnym wykazem kategorii (w tym fallback i cykliczny refresh sterowany `HELPDESK_CATEGORIES_REFRESH_HOURS` / `HELPDESK_DEFAULT_CATEGORIES`), uproszczony kontrakt dla LLM.
