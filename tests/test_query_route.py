@@ -8,7 +8,14 @@ import pytest
 from starlette.responses import JSONResponse
 
 from app.api.v1 import routes_query
-from app.models.schemas import Passage, QueryRequest, QueryResponse, ThreadQueryResponse, ThreadSearchResult
+from app.models.schemas import (
+    Passage,
+    QueryRequest,
+    QueryResponse,
+    TicketDetailsResponse,
+    ThreadQueryResponse,
+    ThreadSearchResult,
+)
 
 
 class DummyQueryService:
@@ -155,3 +162,36 @@ async def test_query_threads_endpoint_returns_full_payload_in_debug(monkeypatch)
     assert isinstance(response, ThreadQueryResponse)
     result = response.results[0]
     assert result.url_suffix == "id=1"
+
+
+class DummyThreadService:
+    def __init__(self, qdrant, ticket_url_prefix=None):
+        self.ticket_url_prefix = ticket_url_prefix
+
+    def get_ticket_details(self, ticket_id):
+        url_suffix = "id=1"
+        full_url = f"{self.ticket_url_prefix}{url_suffix}" if self.ticket_url_prefix and url_suffix else None
+        return TicketDetailsResponse(
+            ticket_id=ticket_id,
+            topic="Topic",
+            details="body",
+            status="open",
+            tags=["vip"],
+            url_suffix=url_suffix,
+            url=full_url,
+            time_created=None,
+            time_modified=None,
+            chunks=[],
+        )
+
+
+@pytest.mark.asyncio
+async def test_ticket_details_endpoint_composes_url_from_settings(monkeypatch):
+    monkeypatch.setattr(routes_query, "ThreadService", DummyThreadService)
+
+    response = await routes_query.ticket_details(ticket_id=1, qdrant=None, settings=_settings())
+
+    assert isinstance(response, TicketDetailsResponse)
+    assert response.url_suffix == "id=1"
+    assert str(response.url) == "https://example.com/ticket?id=1"
+    assert response.status == "open"

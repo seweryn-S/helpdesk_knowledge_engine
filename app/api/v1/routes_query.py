@@ -98,8 +98,9 @@ async def query_threads(
 async def ticket_details(
     ticket_id: int,
     qdrant: QdrantRepository = Depends(get_qdrant),
+    settings: Settings = Depends(get_settings),
 ) -> TicketDetailsResponse:
-    service = ThreadService(qdrant)
+    service = ThreadService(qdrant, ticket_url_prefix=str(settings.helpdesk_ticket_url_prefix))
     try:
         return service.get_ticket_details(ticket_id)
     except ValueError as exc:

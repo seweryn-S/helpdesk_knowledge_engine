@@ -3,6 +3,7 @@
 
 from datetime import datetime
 
+from app.models.schemas import TicketThreadConciseResponse, TicketThreadResponse
 from app.services.thread import ThreadService
 
 
@@ -37,6 +38,66 @@ def test_build_ticket_details_recreates_text():
     assert result.topic == "Topic"
     assert len(result.chunks) == 2
     assert result.chunks[0].chunk_no == 0
+    assert result.url is None
+
+
+def test_build_ticket_details_exposes_metadata_and_url():
+    service = ThreadService(qdrant_repo=None, ticket_url_prefix="https://example.com/ticket?")  # type: ignore[arg-type]
+    payloads = [
+        {
+            "chunk_no": 0,
+            "chunk_start": 0,
+            "detail_chunk": "foo",
+            "topic": "Topic",
+            "status": "open",
+            "tags": ["vip"],
+            "url_suffix": "id=1",
+            "time_created": datetime(2024, 1, 1, 12, 0).isoformat(),
+            "time_modified": datetime(2024, 1, 2, 8, 0).isoformat(),
+            "details_hash": "hash",
+        },
+    ]
+
+    result = service._build_ticket_details(ticket_id=123, payloads=payloads)
+
+    assert result.status == "open"
+    assert result.tags == ["vip"]
+    assert result.url_suffix == "id=1"
+    assert str(result.url) == "https://example.com/ticket?id=1"
+    assert result.time_created == datetime(2024, 1, 1, 12, 0)
+    assert result.time_modified == datetime(2024, 1, 2, 8, 0)
+
+
+def test_get_ticket_thread_full_includes_ticket_url():
+    ticket_payloads = [
+        {
+            "ticket_id": 1,
+            "detail_chunk": "Hello world",
+            "chunk_no": 0,
+            "chunk_start": 0,
+            "topic": "Topic",
+            "status": "open",
+            "tags": ["vip"],
+            "url_suffix": "id=1",
+            "time_created": datetime(2024, 1, 1, 12, 0).isoformat(),
+            "time_modified": datetime(2024, 1, 2, 8, 0).isoformat(),
+        },
+    ]
+    repo = DummyQdrantRepo(ticket_payloads=ticket_payloads, update_payloads=[])
+    service = ThreadService(qdrant_repo=repo, ticket_url_prefix="https://example.com/ticket?")
+
+    response = service.get_ticket_thread(ticket_id=1)
+
+    assert isinstance(response, TicketThreadResponse)  # pełna odpowiedź, nie concise
+    assert not isinstance(response, TicketThreadConciseResponse)
+    assert response.ticket.ticket_id == 1
+    assert response.ticket.status == "open"
+    assert response.ticket.tags == ["vip"]
+    assert response.ticket.url_suffix == "id=1"
+    assert str(response.ticket.url) == "https://example.com/ticket?id=1"
+    assert response.ticket.time_created == datetime(2024, 1, 1, 12, 0)
+    assert response.ticket.time_modified == datetime(2024, 1, 2, 8, 0)
+    assert response.thread_text == "Hello world"
 
 
 def test_build_update_entries_orders_by_time():

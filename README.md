@@ -53,8 +53,8 @@ HELPDESK_DEFAULT_CATEGORIES=["wikamp","network","software","mail","ztn","skryba"
 - `POST /api/v1/sync` – uruchamia synchronizację (opcjonalne filtry, `dry_run`).
 - `POST /api/v1/query` – wyszukiwanie semantyczne z filtrami i cytowaniami; domyślnie ukrywa pola `chunk_no`, `chunk_total`, `chunk_start`, `chunk_end`, `sentence_start`, `sentence_end`, `details_hash` oraz `url_suffix`, a dopiero dodanie `?debug=true` do adresu powoduje zwrócenie pełnego payloadu chunków.
 - `POST /api/v1/query/threads` – wyszukiwanie semantyczne i zwrócenie pełnych wątków (ticket + aktualizacje) z prefiksem `user_role` w treści oraz metadanymi agregowanymi z ticketu; podobnie jak `/query`, domyślnie ukrywa pola chunkowe i `url_suffix`, a `?debug=true` przywraca pełne payloady.
-- `GET /api/v1/tickets/{ticket_id}/details` – rekonstrukcja pełnego `details` ticketu na podstawie chunków z Qdrant.
-- `GET /api/v1/tickets/{ticket_id}/thread` – pełen wątek: zgłoszenie + chronologiczne aktualizacje (również składane tylko na podstawie Qdrant); `?concise=true` zwraca scalone metadane wątku i jeden `thread_text` zamiast listy chunków.
+- `GET /api/v1/tickets/{ticket_id}/details` – rekonstrukcja pełnego `details` ticketu na podstawie chunków z Qdrant wraz z metadanymi zgłoszenia (status, tagi, pełny URL, czasy).
+- `GET /api/v1/tickets/{ticket_id}/thread` – pełen wątek: zgłoszenie + chronologiczne aktualizacje (również składane tylko na podstawie Qdrant); obiekt `ticket` zawiera metadane zgłoszenia (status, tagi, pełny URL, czasy); `?concise=true` zwraca te same metadane spłaszczone do jednego poziomu wraz z `thread_text` zamiast listy chunków.
 
 ## Rekonstrukcja treści tylko z Qdrant
 - Każdy chunk przechowuje jeden fragment w polu `detail_chunk` oraz metadane pozycyjne; nie duplikujemy tekstu w polach `text`/`full_text`.
@@ -273,6 +273,7 @@ QDRANT_UPDATE_COLLECTION=hd_update_chunks_v2
 ```
 
 ## Changelog
+- 0.13.0 – `/tickets/{ticket_id}/details` i pełny `/tickets/{ticket_id}/thread` zwracają teraz metadane zgłoszenia (`status`, `tags`, `url_suffix`, pełny `url`, `time_created`, `time_modified`) – link do Help Desk nie jest już wyłącznością `concise=true`; `concise` pozostaje spójnym skrótem (spłaszczone metadane + `thread_text`).
 - 0.12.0 – nowy skrypt `scripts/reembed.py`: przebudowa wszystkich wektorów w Qdrant na nowym modelu embeddingowym bez kontaktu z Help Desk (teksty odtwarzane z payloadów). Wsparcie: dry-run, resume (checkpoint w SQLite), batch processing, retry z backoffem, progress bar. Samodzielny (wymaga tylko `httpx` + `qdrant-client`), ładuje config z `/etc/default/hd_ke`. Migracja na `OPI-PIB/PolDense-1B` (dim=1792, prefix `[query]: `).
 - 0.11.0 – `/tickets/{ticket_id}/thread` obsługuje `concise=true`, scalając metadane wątku i zwracając pojedynczy `thread_text` (jak `/query/threads`), co skraca odpowiedź dla LLM.
 - 0.10.1 – naprawa `scripts/nightly_sync.py`: usunięty import nieistniejącego `SyncFilters`, filtry przekazywane jako płaskie pola `SyncRequest` zgodnie z kontraktem API.

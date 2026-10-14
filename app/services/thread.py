@@ -61,7 +61,14 @@ class ThreadService:
         if not chunks:
             raise ValueError(f"Ticket {ticket_id} has no chunks in Qdrant")
         details_text = self._join_chunks(chunks)
-        topic = chunks[0].get("topic")
+        exemplar = chunks[0]
+        topic = exemplar.get("topic")
+        status = exemplar.get("status")
+        tags = exemplar.get("tags") or []
+        url_suffix = exemplar.get("url_suffix")
+        time_created = self._parse_datetime(exemplar.get("time_created"))
+        time_modified = self._parse_datetime(exemplar.get("time_modified"))
+        full_url = f"{self.ticket_url_prefix}{url_suffix}" if self.ticket_url_prefix and url_suffix else None
         chunk_meta = [
             ChunkMetadata(
                 chunk_no=payload.get("chunk_no", idx),
@@ -75,7 +82,18 @@ class ThreadService:
             )
             for idx, payload in enumerate(chunks)
         ]
-        return TicketDetailsResponse(ticket_id=ticket_id, topic=topic, details=details_text, chunks=chunk_meta)
+        return TicketDetailsResponse(
+            ticket_id=ticket_id,
+            topic=topic,
+            details=details_text,
+            status=status,
+            tags=list(tags) if isinstance(tags, list) else [],
+            url_suffix=url_suffix,
+            url=full_url,
+            time_created=time_created,
+            time_modified=time_modified,
+            chunks=chunk_meta,
+        )
 
     def _build_update_entries(self, ticket_id: int, payloads: List[Dict[str, Any]]) -> List[ThreadEntry]:
         grouped: Dict[int, List[Dict[str, Any]]] = defaultdict(list)

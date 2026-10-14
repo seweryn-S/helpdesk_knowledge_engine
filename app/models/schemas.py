@@ -216,6 +216,12 @@ class TicketDetailsResponse(BaseModel):
     ticket_id: int  # Identyfikator zgłoszenia
     topic: Optional[str] = None  # Temat zgłoszenia
     details: str  # Pełna treść odtworzona z chunków
+    status: Optional[str] = None  # Aktualny status zgłoszenia
+    tags: List[str] = Field(default_factory=list)  # Tagi zgłoszenia
+    url_suffix: Optional[str] = None  # Suffix linku w Help Desk
+    url: Optional[HttpUrl] = None  # Pełny link złożony w API (prefix + suffix)
+    time_created: Optional[datetime] = None  # Czas utworzenia zgłoszenia
+    time_modified: Optional[datetime] = None  # Czas ostatniej modyfikacji zgłoszenia
     chunks: List[ChunkMetadata]  # Metadane chunków
 
 
