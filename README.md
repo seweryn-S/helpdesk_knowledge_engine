@@ -31,12 +31,15 @@ EMBEDDING_DOCUMENT_PREFIX=
 SYNC_CHECKPOINT_PATH=/var/lib/hd_ke/state.db
 HD_KE_DATA_DIR=/srv/hd_ke
 LOG_LEVEL=INFO  # ustaw na DEBUG, aby logować szczegóły zapytań do Help Desk API
+QUERY_MAX_LIMIT=15  # maksymalna wartość pola `limit` w /query i /query/threads
 THREAD_FILTER_PATTERNS=["^\\s*\\.\\s*$","^\\s*\\r?\\n\\s*$","^\\s*\\.\\s*\\r?\\n\\s*$","^\\s*\\r?\\n\\s*\\r?\\n\\s*$"]
 HELPDESK_CATEGORIES_REFRESH_HOURS=24
 HELPDESK_DEFAULT_CATEGORIES=["wikamp","network","software","mail","ztn","skryba","ekstazjusz","ezd_puw","parking","mzp","kir","teamwww","teta","idcards","violation","usos"]
 ```
 
 `THREAD_FILTER_PATTERNS` przyjmuje listę wyrażeń regularnych (JSON, przecinki lub nowe linie), które powodują całkowite pomijanie zgłoszeń i aktualizacji już na etapie synchronizacji. W domyślnym fallbacku (gdy zmienna nie jest ustawiona) używamy zestawu `\.`, `^\r?\n$`, `^\.\r?\n$` oraz `^\r?\n\r?\n$`. Przykładowa konfiguracja w `deploy/hd_ke.default` prezentuje bardziej tolerancyjne wzorce (`^\s*\.\s*$`, `^\s*\r?\n\s*$`, `^\s*\.\s*\r?\n\s*$`, `^\s*\r?\n\s*\r?\n\s*$`), dzięki czemu filtry działają również na wpisach zawierających dodatkowe spacje przed/po kropce lub pustych liniach. W praktyce warto dopasować wzorce do realnych danych (np. `^\s*$`), aby nie usuwać nadmiarowo treści.
+
+`QUERY_MAX_LIMIT` określa górną granicę pola `limit` w żądaniach `POST /query` i `POST /query/threads` (domyślnie `15`, minimum `1`). Żądania z większą wartością `limit` są odrzucane przez API błędem 422, a aktualne maksimum jest publikowane w dokumentacji OpenAPI. Gdy sufit jest niższy niż domyślna wartość pola (`5`), domyślna wartość jest obcinana do sufitu — dzięki temu klient niepodający `limit` otrzymuje wyniki, a nie błąd 422. Zmienna jest odczytywana przy starcie procesu, więc zmiana pliku wymaga restartu usługi.
 
 `EMBEDDING_PROMPT_PREFIX` jest dodawany przed tekstem zapytań (np. `query: <twoje zapytanie>`), a `EMBEDDING_DOCUMENT_PREFIX` przed chunkami dokumentów podczas synchronizacji (np. `passage: <fragment>`). Domyślnie oba są puste – ustaw odpowiednie wartości tylko wtedy, gdy model embeddingowy wymaga konkretnych prefixów.
 

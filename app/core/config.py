@@ -14,6 +14,34 @@ from pydantic_settings.sources import EnvSettingsSource
 
 from app.version import __version__
 
+# Górna granica pola `limit` w żądaniach /query i /query/threads.
+# Ustawiana zmienną QUERY_MAX_LIMIT (/etc/default/hd_ke → env procesu).
+QUERY_MAX_LIMIT_DEFAULT = 15
+
+# Domyślna wartość pola `limit`, gdy klient jej nie podaje.
+QUERY_LIMIT_DEFAULT = 5
+
+
+def resolve_query_max_limit() -> int:
+    """Resolve the maximum allowed value for query ``limit``.
+
+    The value is read from the ``QUERY_MAX_LIMIT`` environment variable
+    (``/etc/default/hd_ke`` → process env, e.g. via systemd ``EnvironmentFile``
+    or uvicorn ``--env-file``). Falls back to :data:`QUERY_MAX_LIMIT_DEFAULT`
+    when the variable is unset or empty. Raises ``RuntimeError`` on invalid
+    values so that a misconfigured deployment fails fast at startup.
+    """
+    raw = os.environ.get("QUERY_MAX_LIMIT", "").strip()
+    if not raw:
+        return QUERY_MAX_LIMIT_DEFAULT
+    try:
+        value = int(raw)
+    except ValueError as exc:
+        raise RuntimeError(f"QUERY_MAX_LIMIT must be an integer, got: {raw!r}") from exc
+    if value < 1:
+        raise RuntimeError("QUERY_MAX_LIMIT must be a positive integer")
+    return value
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(

@@ -31,12 +31,15 @@ EMBEDDING_DOCUMENT_PREFIX=
 SYNC_CHECKPOINT_PATH=/var/lib/hd_ke/state.db
 HD_KE_DATA_DIR=/srv/hd_ke
 LOG_LEVEL=INFO  # set to DEBUG to log detailed Help Desk API requests/responses
+QUERY_MAX_LIMIT=15  # max value of the `limit` field in /query and /query/threads
 THREAD_FILTER_PATTERNS=["^\\s*\\.\\s*$","^\\s*\\r?\\n\\s*$","^\\s*\\.\\s*\\r?\\n\\s*$","^\\s*\\r?\\n\\s*\\r?\\n\\s*$"]
 HELPDESK_CATEGORIES_REFRESH_HOURS=24
 HELPDESK_DEFAULT_CATEGORIES=["wikamp","network","software","mail","ztn","skryba","ekstazjusz","ezd_puw","parking","mzp","kir","teamwww","teta","idcards","violation","usos"]
 ```
 
 `THREAD_FILTER_PATTERNS` accepts a list of regular expressions (JSON, comma- or newline-separated) that causes tickets/updates to be skipped entirely during sync. If the variable is unset we fall back to `\.`, `^\r?\n$`, `^\.\r?\n$`, and `^\r?\n\r?\n$`. The sample `deploy/hd_ke.default` file shows a more permissive configuration (`^\s*\.\s*$`, `^\s*\r?\n\s*$`, `^\s*\.\s*\r?\n\s*$`, `^\s*\r?\n\s*\r?\n\s*$`) so that the filters still trigger when users insert stray spaces around dots or blank lines. Adjust the list to match your data (e.g. `^\s*$`) to avoid discarding valid content.
+
+`QUERY_MAX_LIMIT` sets the upper bound of the `limit` field in `POST /query` and `POST /query/threads` requests (default `15`, minimum `1`). Requests with a higher `limit` are rejected by the API with a 422 error, and the current maximum is also exposed in the OpenAPI documentation. When the bound is lower than the field's default value (`5`), the default is clamped down to the bound — so a client that omits `limit` still receives results instead of a 422 error. The variable is read at process start, so changing the file requires a service restart.
 
 `EMBEDDING_PROMPT_PREFIX` is prepended to semantic queries (e.g. `query: <your question>`), whereas `EMBEDDING_DOCUMENT_PREFIX` is applied to document chunks during sync (e.g. `passage: <chunk>`). Both are empty by default – set them only if your embedding model requires explicit hints.
 

@@ -9,6 +9,8 @@ from typing import List, Literal, Optional
 from pydantic import BaseModel, Field, HttpUrl
 from pydantic.config import ConfigDict
 
+from app.core.config import QUERY_LIMIT_DEFAULT, resolve_query_max_limit
+
 
 # DTOs for Help Desk data
 class TicketDTO(BaseModel):
@@ -99,6 +101,14 @@ class SyncResult(BaseModel):
     last_update_modified: Optional[datetime] = None  # Najpóźniejsza modyfikacja aktualizacji
 
 
+# Górna granica `limit` w żądaniach zapytań – z QUERY_MAX_LIMIT
+# (/etc/default/hd_ke → env), odczytana raz przy imporcie modułu.
+_QUERY_LIMIT_MAX = resolve_query_max_limit()
+# Zabezpieczenie: domyślna wartość nie może przekraczać sufitu,
+# inaczej klient bez pola `limit` otrzymywałby błąd 422.
+_QUERY_LIMIT_DEFAULT = min(QUERY_LIMIT_DEFAULT, _QUERY_LIMIT_MAX)
+
+
 class QueryRequest(BaseModel):
     query: str = Field(
         ...,
@@ -106,12 +116,12 @@ class QueryRequest(BaseModel):
         json_schema_extra={"example": "How to reset my VPN password?"},
     )  # Treść zapytania tekstowego
     limit: int = Field(
-        default=5,
+        default=_QUERY_LIMIT_DEFAULT,
         ge=1,
-        le=50,
-        description="Maximum number of results to return (1–50).",
-        json_schema_extra={"example": 10},
-    )  # Maksymalna liczba wyników
+        le=_QUERY_LIMIT_MAX,
+        description=f"Maximum number of results to return (1–{_QUERY_LIMIT_MAX}).",
+        json_schema_extra={"example": min(10, _QUERY_LIMIT_MAX)},
+    )  # Maksymalna liczba wyników (limit: QUERY_MAX_LIMIT w /etc/default/hd_ke)
     time_from: Optional[datetime] = Field(
         default=None,
         description="Include items modified on or after this time (ISO 8601).",

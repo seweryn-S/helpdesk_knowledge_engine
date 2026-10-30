@@ -19,6 +19,8 @@ EMBEDDING_DOCUMENT_PREFIX=
 SYNC_CHECKPOINT_PATH=/var/lib/hd_ke/state.db
 HD_KE_DATA_DIR=/srv/hd_ke
 LOG_LEVEL=INFO
+# Maksymalna wartość pola `limit` w POST /query i POST /query/threads (domyślnie 15)
+QUERY_MAX_LIMIT=15
 # Regex patterns (comma/newline separated or JSON) to skip entire tickets/updates
 THREAD_FILTER_PATTERNS=["^\\s*\\.\\s*$","^\\s*\\r?\\n\\s*$","^\\s*\\.\\s*\\r?\\n\\s*$","^\\s*\\r?\\n\\s*\\r?\\n\\s*$"]
 HELPDESK_CATEGORIES_REFRESH_HOURS=24
