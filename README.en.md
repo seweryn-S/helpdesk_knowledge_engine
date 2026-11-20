@@ -4,6 +4,9 @@
 `hd_ke` is an external RAG tool that indexes Help Desk tickets and updates into Qdrant and exposes a REST API for LLMs to fetch passages with citations.
 
 ## Architecture
+
+[Mermaid architecture and design diagrams (Polish)](docs/README.md)
+
 - **ETL/sync**: periodic fetch of tickets and updates from Help Desk API, incremental via `time_modified_after`, checkpoints stored in SQLite (`/var/lib/hd_ke/state.db`).
 - **Chunking**: sentence-aware splitting (default 512 chars). Every chunk carries offsets (`chunk_start`, `chunk_end`), sentence indexes and `details_hash`, enabling perfect reconstruction straight from Qdrant.
 - **Embeddings**: OpenAI‑compatible client (configurable endpoint); vector dimension detected via `/embeddings` call on startup or provided in config.
