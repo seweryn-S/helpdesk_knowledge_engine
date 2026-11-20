@@ -7,7 +7,7 @@ import hashlib
 import logging
 import re
 from datetime import datetime
-from typing import Any, Dict, Iterable, List, Optional, Pattern, Sequence
+from typing import Any, AsyncIterator, Dict, Iterable, List, Optional, Pattern, Sequence
 from uuid import UUID, uuid5
 
 import aiosqlite
@@ -88,7 +88,7 @@ class SyncService:
         update_since = request.time_modified_after or await state.get_checkpoint("updates")
 
         ticket_result = await self._sync_tickets(request, ticket_since, page_limit, chunk_size, request.dry_run)
-        allowed_ticket_ids = sorted(self._processed_ticket_ids)
+        allowed_ticket_ids = await self._resolve_update_ticket_ids(request, page_limit)
         update_result = await self._sync_updates(
             request,
             update_since,
@@ -121,74 +121,93 @@ class SyncService:
         chunk_size: int,
         dry_run: bool,
     ) -> Optional[datetime]:
+        params: Dict[str, Any] = self._ticket_filter_params(request)
+        if modified_after:
+            params["time_modified_after"] = modified_after.isoformat()
+        if request.time_modified_before:
+            params["time_modified_before"] = request.time_modified_before.isoformat()
+
         last_modified: Optional[datetime] = modified_after
+        async for tickets in self._fetch_ticket_pages(params, page_limit, set(request.ticket_id or [])):
+            await self._upsert_ticket_batch(tickets, chunk_size=chunk_size, dry_run=dry_run)
+            if tickets:
+                max_mod = max(t.time_modified for t in tickets)
+                last_modified = max_mod if (not last_modified or max_mod > last_modified) else last_modified
+        return last_modified
+
+    @staticmethod
+    def _ticket_filter_params(request: SyncRequest) -> Dict[str, Any]:
+        return {
+            name: values
+            for name, values in {"status": request.status, "category": request.category, "tag": request.tag}.items()
+            if values
+        }
+
+    async def _fetch_ticket_pages(
+        self, params: Dict[str, Any], page_limit: int, ticket_ids: set[int]
+    ) -> AsyncIterator[list[TicketDTO]]:
         page = 1
         while True:
-            params: Dict[str, Any] = {}
-            time_after = request.time_modified_after or modified_after
-            if time_after:
-                params["time_modified_after"] = time_after.isoformat()
-            if request.time_modified_before:
-                params["time_modified_before"] = request.time_modified_before.isoformat()
-            if request.status:
-                params["status"] = request.status
-            if request.category:
-                params["category"] = request.category
-            if request.tag:
-                params["tag"] = request.tag
-
             pagination = {"page": page, "limit": page_limit}
             data = await self.helpdesk_client.fetch_tickets(params=params, pagination=pagination)
             tickets_raw = data.get("data") or []
             if not tickets_raw:
                 break
             tickets = [TicketDTO.model_validate(t) for t in tickets_raw]
-            if request.ticket_id:
-                allowed_ids = set(request.ticket_id)
-                tickets = [t for t in tickets if t.id in allowed_ids]
-            await self._upsert_ticket_batch(tickets, chunk_size=chunk_size, dry_run=dry_run)
-            if tickets:
-                max_mod = max(t.time_modified for t in tickets)
-                last_modified = max_mod if (not last_modified or max_mod > last_modified) else last_modified
-            pagination_info = data.get("pagination") or {}
-            next_page = pagination_info.get("next_page")
+            if ticket_ids:
+                tickets = [ticket for ticket in tickets if ticket.id in ticket_ids]
+            yield tickets
+            next_page = (data.get("pagination") or {}).get("next_page")
             if not next_page:
                 break
             page = next_page
-        return last_modified
+
+    async def _resolve_update_ticket_ids(self, request: SyncRequest, page_limit: int) -> list[int] | None:
+        params = self._ticket_filter_params(request)
+        ticket_ids = set(request.ticket_id or [])
+        if not params:
+            return sorted(ticket_ids) or None
+
+        # Parent filters apply independently of the parent's last modification date.
+        allowed_ids = set(self._processed_ticket_ids)
+        async for tickets in self._fetch_ticket_pages(params, page_limit, ticket_ids):
+            allowed_ids.update(ticket.id for ticket in tickets if not self._should_skip_details(ticket.details))
+            if ticket_ids and allowed_ids == ticket_ids:
+                break
+        return sorted(allowed_ids)
 
     async def _sync_updates(
         self,
         request: SyncRequest,
         modified_after: Optional[datetime],
-        allowed_ticket_ids: Sequence[int],
+        allowed_ticket_ids: Sequence[int] | None,
         page_limit: int,
         chunk_size: int,
         dry_run: bool,
     ) -> Optional[datetime]:
-        if not allowed_ticket_ids:
-            return modified_after
-
         last_modified: Optional[datetime] = modified_after
-        ticket_batches = [
-            allowed_ticket_ids[i : i + self._UPDATE_TICKET_ID_BATCH_SIZE]
-            for i in range(0, len(allowed_ticket_ids), self._UPDATE_TICKET_ID_BATCH_SIZE)
-        ]
+        ticket_batches: list[Sequence[int] | None] = [None]
+        if allowed_ticket_ids is not None:
+            ticket_batches = [
+                allowed_ticket_ids[i : i + self._UPDATE_TICKET_ID_BATCH_SIZE]
+                for i in range(0, len(allowed_ticket_ids), self._UPDATE_TICKET_ID_BATCH_SIZE)
+            ]
+        update_filters: Dict[str, Any] = {}
+        if modified_after:
+            update_filters["time_modified_after"] = modified_after.isoformat()
+        if request.time_modified_before:
+            update_filters["time_modified_before"] = request.time_modified_before.isoformat()
+        if request.update_type:
+            update_filters["type"] = request.update_type
+        if request.new_ticket_status:
+            update_filters["new_ticket_status"] = request.new_ticket_status
 
         for batch in ticket_batches:
+            params = update_filters.copy()
+            if batch is not None:
+                params["ticket_id"] = list(batch)
             page = 1
             while True:
-                params: Dict[str, Any] = {"ticket_id": list(batch)}
-                time_after = request.time_modified_after or modified_after
-                if time_after:
-                    params["time_modified_after"] = time_after.isoformat()
-                if request.time_modified_before:
-                    params["time_modified_before"] = request.time_modified_before.isoformat()
-                if request.update_type:
-                    params["type"] = request.update_type
-                if request.new_ticket_status:
-                    params["new_ticket_status"] = request.new_ticket_status
-
                 pagination = {"page": page, "limit": page_limit}
                 data = await self.helpdesk_client.fetch_updates(params=params, pagination=pagination)
                 updates_raw = data.get("data") or []
